@@ -187,8 +187,9 @@ if (require.main === module) {
   connectDatabase()
     .then(() => {
       app.listen(port, () => {
-        console.log(`Server is running at http://api.moonlights.dev`);
-        console.log(`Swagger UI is available at http://api.moonlights.dev/api-docs`);
+        const applicationUrl = configuredServerUrl || `http://localhost:${port}`;
+        console.log(`Server is running at ${applicationUrl}`);
+        console.log(`Swagger UI is available at ${applicationUrl}/api-docs`);
       });
     })
     .catch(() => {
