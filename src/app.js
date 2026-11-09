@@ -3,7 +3,7 @@ require('dotenv').config();
 const express = require('express');
 const swaggerJsdoc = require('swagger-jsdoc');
 const swaggerUi = require('swagger-ui-express');
-const { connectDatabase } = require('./config/database');
+const { connectDatabase, pool } = require('./config/database');
 
 const app = express();
 const port = Number(process.env.PORT) || 3000;
@@ -141,6 +141,39 @@ app.get('/health', (req, res) => {
   }
 
   return res.status(200).json(response);
+});
+
+/**
+ * @openapi
+ * /health/db:
+ *   get:
+ *     tags:
+ *       - Health
+ *     summary: 데이터베이스 연결 상태 확인
+ *     responses:
+ *       '200':
+ *         description: 데이터베이스 연결이 정상입니다.
+ *       '503':
+ *         description: 데이터베이스에 연결할 수 없습니다.
+ */
+app.get('/health/db', async (req, res) => {
+  try {
+    await pool.query('SELECT 1');
+
+    return res.status(200).json({
+      status: 'ok',
+      database: 'connected',
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error('Database health check failed:', error.message);
+
+    return res.status(503).json({
+      status: 'error',
+      database: 'disconnected',
+      timestamp: new Date().toISOString(),
+    });
+  }
 });
 
 app.get('/api-docs.json', (req, res) => {
