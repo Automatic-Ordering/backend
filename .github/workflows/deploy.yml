@@ -27,7 +27,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-        # GitHub Actions 빌드 환경 확인
       - name: Check Build Context
         run: |
           pwd
@@ -36,7 +35,6 @@ jobs:
           ls -la scripts/
           git ls-files scripts/
 
-      # GitHub 저장소 이름을 소문자로 변환
       - name: Set Docker Image Name
         run: |
           echo "IMAGE_NAME=${GITHUB_REPOSITORY,,}" >> $GITHUB_ENV
@@ -83,19 +81,30 @@ jobs:
             cd ~/convenience-order
 
             test -f .env || {
-              echo "Deployment failed: ~/convenience-order/.env does not exist."
+              echo "Deployment failed: .env file does not exist."
               exit 1
             }
 
             IMAGE="ghcr.io/${IMAGE_NAME}:${IMAGE_TAG}"
+
+            echo "Pulling image: $IMAGE"
             docker pull "$IMAGE"
 
+            echo "Running database migrations..."
             docker run --rm \
               --add-host=host.docker.internal:host-gateway \
               --env-file .env \
               "$IMAGE" \
               npm run migrate
 
+            echo "Creating administrator account..."
+            docker run --rm \
+              --add-host=host.docker.internal:host-gateway \
+              --env-file .env \
+              "$IMAGE" \
+              npm run seed:admin
+
+            echo "Replacing application container..."
             docker stop convenience-order-api || true
             docker rm convenience-order-api || true
 
@@ -107,6 +116,7 @@ jobs:
               -p 127.0.0.1:3000:3000 \
               "$IMAGE"
 
+            echo "Checking application status..."
             sleep 5
 
             if [ "$(docker inspect -f '{{.State.Running}}' convenience-order-api)" != "true" ]; then
@@ -115,7 +125,10 @@ jobs:
               exit 1
             fi
 
+            echo "Deployment completed successfully."
+
             docker image prune -f
+
         env:
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
           GHCR_USERNAME: ${{ vars.GHCR_USERNAME }}

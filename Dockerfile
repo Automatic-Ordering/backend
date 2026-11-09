@@ -12,7 +12,7 @@ COPY config ./config
 COPY models ./models
 COPY migrations ./migrations
 COPY scripts ./scripts
-
+COPY seeds ./seeds
 ENV NODE_ENV=production
 
 EXPOSE 3000
