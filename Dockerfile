@@ -8,6 +8,10 @@ COPY package*.json ./
 RUN npm ci --omit=dev
 
 COPY src ./src
+COPY config ./config
+COPY models ./models
+COPY migrations ./migrations
+COPY scripts ./scripts
 
 ENV NODE_ENV=production
 

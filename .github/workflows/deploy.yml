@@ -81,6 +81,12 @@ jobs:
             IMAGE="ghcr.io/${IMAGE_NAME}:${IMAGE_TAG}"
             docker pull "$IMAGE"
 
+            docker run --rm \
+              --add-host=host.docker.internal:host-gateway \
+              --env-file .env \
+              "$IMAGE" \
+              npm run migrate
+
             docker stop convenience-order-api || true
             docker rm convenience-order-api || true
 
