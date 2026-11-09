@@ -7,7 +7,9 @@ const { connectDatabase, pool } = require('./config/database');
 
 const app = express();
 const port = Number(process.env.PORT) || 3000;
-const swaggerServerUrl = process.env.SERVER_URL?.trim() || '/';
+const configuredServerUrl = process.env.SERVER_URL?.trim();
+const swaggerServerUrl = configuredServerUrl || '/';
+const swaggerServerDescription = configuredServerUrl ? '운영 서버' : '로컬 서버';
 
 app.use(express.json());
 
@@ -22,7 +24,7 @@ const swaggerDefinition = {
   servers: [
     {
       url: swaggerServerUrl,
-      description: swaggerServerUrl === '/' ? '현재 접속한 서버' : 'API 서버',
+      description: swaggerServerDescription,
     },
   ],
 };
