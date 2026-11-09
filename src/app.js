@@ -7,9 +7,25 @@ const { connectDatabase, pool } = require('./config/database');
 
 const app = express();
 const port = Number(process.env.PORT) || 3000;
-const configuredServerUrl = process.env.SERVER_URL?.trim();
-const swaggerServerUrl = configuredServerUrl || '/';
-const swaggerServerDescription = configuredServerUrl ? '운영 서버' : '로컬 서버';
+const serverUrl = process.env.SERVER_URL?.trim();
+
+if (!serverUrl) {
+  throw new Error('SERVER_URL environment variable is required.');
+}
+
+let parsedServerUrl;
+
+try {
+  parsedServerUrl = new URL(serverUrl);
+} catch {
+  throw new Error('SERVER_URL must be a valid URL.');
+}
+
+if (!['http:', 'https:'].includes(parsedServerUrl.protocol)) {
+  throw new Error('SERVER_URL must use http or https.');
+}
+
+const swaggerServerUrl = serverUrl.replace(/\/+$/, '');
 
 app.use(express.json());
 
@@ -24,7 +40,7 @@ const swaggerDefinition = {
   servers: [
     {
       url: swaggerServerUrl,
-      description: swaggerServerDescription,
+      description: 'SERVER_URL',
     },
   ],
 };
@@ -187,9 +203,8 @@ if (require.main === module) {
   connectDatabase()
     .then(() => {
       app.listen(port, () => {
-        const applicationUrl = configuredServerUrl || `http://localhost:${port}`;
-        console.log(`Server is running at ${applicationUrl}`);
-        console.log(`Swagger UI is available at ${applicationUrl}/api-docs`);
+        console.log(`Server is running at ${serverUrl}`);
+        console.log(`Swagger UI is available at ${serverUrl}/api-docs`);
       });
     })
     .catch(() => {
