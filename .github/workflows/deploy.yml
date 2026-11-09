@@ -27,6 +27,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+        # GitHub Actions 빌드 환경 확인
+      - name: Check Build Context
+        run: |
+          pwd
+          git rev-parse HEAD
+          ls -la
+          ls -la scripts/
+          git ls-files scripts/
+
       # GitHub 저장소 이름을 소문자로 변환
       - name: Set Docker Image Name
         run: |
