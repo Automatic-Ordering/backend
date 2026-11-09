@@ -7,6 +7,7 @@ const { connectDatabase, pool } = require('./config/database');
 
 const app = express();
 const port = Number(process.env.PORT) || 3000;
+const swaggerServerUrl = process.env.SERVER_URL?.trim() || '/';
 
 app.use(express.json());
 
@@ -20,8 +21,8 @@ const swaggerDefinition = {
   },
   servers: [
     {
-      url: process.env.SERVER_URL || `http://localhost:${port}`,
-      description: '로컬 개발 서버',
+      url: swaggerServerUrl,
+      description: swaggerServerUrl === '/' ? '현재 접속한 서버' : 'API 서버',
     },
   ],
 };
@@ -184,8 +185,8 @@ if (require.main === module) {
   connectDatabase()
     .then(() => {
       app.listen(port, () => {
-        console.log(`Server is running at http://localhost:${port}`);
-        console.log(`Swagger UI is available at http://localhost:${port}/api-docs`);
+        console.log(`Server is running at http://api.moonlights.dev`);
+        console.log(`Swagger UI is available at http://api.moonlights.dev/api-docs`);
       });
     })
     .catch(() => {
