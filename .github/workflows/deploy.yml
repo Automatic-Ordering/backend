@@ -1,4 +1,3 @@
-
 name: Backend CI/CD
 
 on:
@@ -14,7 +13,6 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
   build-and-push:
@@ -32,6 +30,11 @@ jobs:
       - name: Install Dependencies
         run: npm ci
 
+      # GitHub 저장소 이름을 소문자로 변환
+      - name: Set Docker Image Name
+        run: |
+          echo "IMAGE_NAME=${GITHUB_REPOSITORY,,}" >> $GITHUB_ENV
+
       - name: Login to GHCR
         uses: docker/login-action@v3
         with:
@@ -45,14 +48,18 @@ jobs:
           context: .
           push: true
           tags: |
-            ghcr.io/${{ github.repository }}:latest
-            ghcr.io/${{ github.repository }}:${{ github.sha }}
+            ghcr.io/${{ env.IMAGE_NAME }}:latest
+            ghcr.io/${{ env.IMAGE_NAME }}:${{ github.sha }}
 
   deploy:
     needs: build-and-push
     runs-on: ubuntu-latest
 
     steps:
+      - name: Set Docker Image Name
+        run: |
+          echo "IMAGE_NAME=${GITHUB_REPOSITORY,,}" >> $GITHUB_ENV
+
       - name: Deploy to Ubuntu Server
         uses: appleboy/ssh-action@v1.2.2
         with:
@@ -86,4 +93,4 @@ jobs:
         env:
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
           GHCR_USERNAME: ${{ vars.GHCR_USERNAME }}
-          IMAGE_NAME: ${{ github.repository }}
+          IMAGE_NAME: ${{ env.IMAGE_NAME }}
