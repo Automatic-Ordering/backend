@@ -10,7 +10,9 @@ const { hashPassword } = require('../src/utils/password');
   }
   const [existing] = await pool.query('SELECT admin_id FROM admins WHERE admin_username = ?', [username]);
   if (existing.length) {
-    throw new Error('The administrator already exists.');
+    console.log(`Administrator "${username}" already exists.`);
+    await pool.end();
+    return;
   }
   await pool.query(
     'INSERT INTO admins (admin_username, password_hash) VALUES (?, ?)',

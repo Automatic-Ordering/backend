@@ -35,8 +35,7 @@ if (!['http:', 'https:'].includes(parsedServerUrl.protocol)) {
 
 const swaggerServerUrl = serverUrl.replace(/\/+$/, '');
 const allowedOrigins = new Set(
-  (process.env.CORS_ORIGINS || 'http://localhost:5173,https://store.moonlights.dev')
-    .split(',')
+  ['http://localhost:5173', 'https://store.moonlights.dev', ...(process.env.CORS_ORIGINS || '').split(',')]
     .map((origin) => origin.trim())
     .filter(Boolean),
 );
