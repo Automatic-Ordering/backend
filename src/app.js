@@ -4,13 +4,12 @@ const express = require('express');
 const path = require('node:path');
 const swaggerJsdoc = require('swagger-jsdoc');
 const swaggerUi = require('swagger-ui-express');
-const { connectDatabase, pool } = require('./config/database');
+const { sequelize } = require('../config/database');
 const { connectDatabase: connectSequelize, syncDatabase } = require('../config/database');
 require('../models');
 const authRoutes = require('./routes/auth');
 const adminAuthRoutes = require('./routes/admin-auth');
 const adminStoreRoutes = require('./routes/admin-stores');
-const v1AdminStoreRoutes = require('./routes/v1-admin-stores');
 const productRoutes = require('./routes/products');
 
 const app = express();
@@ -63,7 +62,6 @@ app.use(express.json());
 app.use('/api/auth', authRoutes);
 app.use('/api/admin/auth', adminAuthRoutes);
 app.use('/api/admin/stores', adminStoreRoutes);
-app.use('/api/v1/admin/stores', v1AdminStoreRoutes);
 app.use('/api/products', productRoutes);
 
 const swaggerDefinition = {
@@ -252,7 +250,7 @@ app.get('/health', (req, res) => {
  */
 app.get('/health/db', async (req, res) => {
   try {
-    await pool.query('SELECT 1');
+    await sequelize.authenticate();
 
     return res.status(200).json({
       status: 'ok',
@@ -285,7 +283,6 @@ app.use((error, req, res, next) => {
 if (require.main === module) {
   connectSequelize()
     .then(syncDatabase)
-    .then(() => connectDatabase())
     .then(() => {
       app.listen(port, () => {
         console.log(`Server is running at ${serverUrl}`);

@@ -1,5 +1,5 @@
 const jwt = require('jsonwebtoken');
-const { pool } = require('../config/database');
+const { Admin, Store, StoreAccount } = require('../../models');
 
 const getJwtSecret = () => {
   if (!process.env.JWT_SECRET) {
@@ -28,34 +28,25 @@ const authenticate = async (req, res, next) => {
 
   try {
     if (payload.role === 'ADMIN' && Number.isInteger(payload.adminId)) {
-      const [rows] = await pool.query(
-        'SELECT admin_id FROM admins WHERE admin_id = ?',
-        [payload.adminId],
-      );
-      if (rows.length === 1) {
+      const admin = await Admin.findByPk(payload.adminId);
+      if (admin) {
         req.user = { adminId: payload.adminId, role: 'ADMIN' };
         return next();
       }
     }
 
     if (payload.role === 'STORE' && Number.isInteger(payload.storeId)) {
-      const [rows] = await pool.query(
-        `SELECT s.store_id, s.store_code, s.store_name, s.status,
-                a.account_id, a.password_change_required
-           FROM stores s
-           JOIN store_accounts a ON a.store_id = s.store_id
-          WHERE s.store_id = ?`,
-        [payload.storeId],
-      );
-      const store = rows[0];
+      const store = await Store.findByPk(payload.storeId, {
+        include: [{ model: StoreAccount, as: 'account', required: true }],
+      });
       if (store && store.status === 'ACTIVE') {
         req.user = {
-          storeId: store.store_id,
-          storeCode: store.store_code,
-          storeName: store.store_name,
+          storeId: store.storeId,
+          storeCode: store.storeCode,
+          storeName: store.storeName,
           status: store.status,
-          accountId: store.account_id,
-          passwordChangeRequired: Boolean(store.password_change_required),
+          accountId: store.account.accountId,
+          passwordChangeRequired: Boolean(store.account.passwordChangeRequired),
           role: 'STORE',
         };
         return next();

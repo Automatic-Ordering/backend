@@ -1,5 +1,5 @@
 require('dotenv').config();
-const { pool } = require('../src/config/database');
+const { Admin } = require('../models');
 const { hashPassword } = require('../src/utils/password');
 
 (async () => {
@@ -8,20 +8,17 @@ const { hashPassword } = require('../src/utils/password');
   if (!username || !password || password.length < 8) {
     throw new Error('ADMIN_USERNAME and ADMIN_PASSWORD (minimum 8 characters) are required.');
   }
-  const [existing] = await pool.query('SELECT admin_id FROM admins WHERE admin_username = ?', [username]);
-  if (existing.length) {
+  const existing = await Admin.findOne({ where: { adminUsername: username } });
+  if (existing) {
     console.log(`Administrator "${username}" already exists.`);
-    await pool.end();
+    await Admin.sequelize.close();
     return;
   }
-  await pool.query(
-    'INSERT INTO admins (admin_username, password_hash) VALUES (?, ?)',
-    [username, await hashPassword(password)],
-  );
+  await Admin.create({ adminUsername: username, passwordHash: await hashPassword(password) });
   console.log(`Administrator "${username}" created.`);
-  await pool.end();
+  await Admin.sequelize.close();
 })().catch(async (error) => {
   console.error('Admin seed failed:', error.message);
-  await pool.end();
+  await Admin.sequelize.close();
   process.exitCode = 1;
 });

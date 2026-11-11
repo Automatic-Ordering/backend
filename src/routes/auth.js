@@ -1,6 +1,6 @@
 const express = require('express');
 const jwt = require('jsonwebtoken');
-const { pool } = require('../config/database');
+const { Store, StoreAccount } = require('../../models');
 const { hashPassword, verifyPassword } = require('../utils/password');
 const { authenticate, getJwtSecret } = require('../middleware/auth');
 
@@ -60,17 +60,14 @@ router.post('/login', async (req, res, next) => {
   }
 
   try {
-    const [rows] = await pool.query(
-      `SELECT s.store_id, s.status, a.password_hash
-         FROM stores s JOIN store_accounts a ON a.store_id = s.store_id
-        WHERE s.store_code = ?`,
-      [storeCode.trim()],
-    );
-    const store = rows[0];
-    if (!store || store.status !== 'ACTIVE' || !(await verifyPassword(password, store.password_hash))) {
+    const store = await Store.findOne({
+      where: { storeCode: storeCode.trim() },
+      include: [{ model: StoreAccount, as: 'account', required: true }],
+    });
+    if (!store || store.status !== 'ACTIVE' || !(await verifyPassword(password, store.account.passwordHash))) {
       return res.status(401).json({ error: 'INVALID_CREDENTIALS', message: '점포 코드 또는 비밀번호가 올바르지 않습니다.' });
     }
-    return res.json({ token: issueStoreToken(store.store_id), token_type: 'Bearer' });
+    return res.json({ token: issueStoreToken(store.storeId), token_type: 'Bearer' });
   } catch (error) {
     return next(error);
   }
@@ -211,19 +208,11 @@ router.patch('/password', authenticate, async (req, res, next) => {
   }
 
   try {
-    const [rows] = await pool.query(
-      'SELECT password_hash FROM store_accounts WHERE account_id = ?',
-      [req.user.accountId],
-    );
-    if (!rows[0] || !(await verifyPassword(currentPassword, rows[0].password_hash))) {
+    const account = await StoreAccount.findByPk(req.user.accountId);
+    if (!account || !(await verifyPassword(currentPassword, account.passwordHash))) {
       return res.status(401).json({ error: 'INVALID_CREDENTIALS', message: '현재 비밀번호가 올바르지 않습니다.' });
     }
-    await pool.query(
-      `UPDATE store_accounts
-          SET password_hash = ?, password_change_required = FALSE, updated_at = CURRENT_TIMESTAMP
-        WHERE account_id = ?`,
-      [await hashPassword(newPassword), req.user.accountId],
-    );
+    await account.update({ passwordHash: await hashPassword(newPassword), passwordChangeRequired: false });
     return res.json({ message: '비밀번호가 성공적으로 변경되었습니다.' });
   } catch (error) {
     return next(error);

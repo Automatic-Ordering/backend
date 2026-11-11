@@ -1,3 +1,4 @@
+const Admin = require('./Admin');
 const Store = require('./Store');
 const StoreAccount = require('./StoreAccount');
 const Product = require('./Product');
@@ -83,6 +84,7 @@ Order.belongsTo(Product, {
 });
 
 module.exports = {
+  Admin,
   Store,
   StoreAccount,
   Product,

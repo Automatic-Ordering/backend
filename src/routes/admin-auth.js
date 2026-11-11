@@ -1,6 +1,6 @@
 const express = require('express');
 const jwt = require('jsonwebtoken');
-const { pool } = require('../config/database');
+const { Admin } = require('../../models');
 const { verifyPassword } = require('../utils/password');
 const { getJwtSecret } = require('../middleware/auth');
 
@@ -57,16 +57,12 @@ router.post('/login', async (req, res, next) => {
     return res.status(400).json({ error: 'INVALID_INPUT', message: '관리자 아이디와 비밀번호는 필수입니다.' });
   }
   try {
-    const [rows] = await pool.query(
-      'SELECT admin_id, password_hash FROM admins WHERE admin_username = ?',
-      [username.trim()],
-    );
-    const admin = rows[0];
-    if (!admin || !(await verifyPassword(password, admin.password_hash))) {
+    const admin = await Admin.findOne({ where: { adminUsername: username.trim() } });
+    if (!admin || !(await verifyPassword(password, admin.passwordHash))) {
       return res.status(401).json({ error: 'INVALID_CREDENTIALS', message: '아이디 또는 비밀번호가 올바르지 않습니다.' });
     }
     return res.json({
-      token: jwt.sign({ adminId: admin.admin_id, role: 'ADMIN' }, getJwtSecret(), { expiresIn: '8h' }),
+      token: jwt.sign({ adminId: admin.adminId, role: 'ADMIN' }, getJwtSecret(), { expiresIn: '8h' }),
       token_type: 'Bearer',
     });
   } catch (error) {

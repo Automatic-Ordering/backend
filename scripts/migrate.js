@@ -1,7 +1,7 @@
 require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
-const { pool } = require('../src/config/database');
+const { sequelize } = require('../config/database');
 
 (async () => {
   const migrationFiles = fs
@@ -15,15 +15,13 @@ const { pool } = require('../src/config/database');
       .map((statement) => statement.trim())
       .filter(Boolean),
   );
-  const connection = await pool.getConnection();
   try {
     for (const statement of statements) {
-      await connection.query(statement);
+      await sequelize.query(statement);
     }
     console.log('Authentication tables are ready.');
   } finally {
-    connection.release();
-    await pool.end();
+    await sequelize.close();
   }
 })().catch((error) => {
   console.error('Migration failed:', error.message);
