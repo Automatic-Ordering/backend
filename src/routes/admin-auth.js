@@ -54,7 +54,7 @@ const router = express.Router();
 router.post('/login', async (req, res, next) => {
   const { admin_username: username, password } = req.body || {};
   if (typeof username !== 'string' || typeof password !== 'string' || !username.trim() || !password) {
-    return res.status(400).json({ error: 'INVALID_INPUT', message: 'admin_username and password are required.' });
+    return res.status(400).json({ error: 'INVALID_INPUT', message: '관리자 아이디와 비밀번호는 필수입니다.' });
   }
   try {
     const [rows] = await pool.query(
@@ -63,7 +63,7 @@ router.post('/login', async (req, res, next) => {
     );
     const admin = rows[0];
     if (!admin || !(await verifyPassword(password, admin.password_hash))) {
-      return res.status(401).json({ error: 'INVALID_CREDENTIALS', message: 'Invalid username or password.' });
+      return res.status(401).json({ error: 'INVALID_CREDENTIALS', message: '아이디 또는 비밀번호가 올바르지 않습니다.' });
     }
     return res.json({
       token: jwt.sign({ adminId: admin.admin_id, role: 'ADMIN' }, getJwtSecret(), { expiresIn: '8h' }),

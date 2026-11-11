@@ -48,7 +48,7 @@ test('creates a store and account in one transaction', async () => {
   assert.equal(response.status, 201);
   assert.equal(response.body.store_id, 42);
   assert.equal(response.body.store_name, 'Test Store');
-  assert.match(response.body.store_code, /^STORE-[0-9A-F]{8}$/);
+  assert.match(response.body.store_code, /^\d{5}$/);
   assert.deepEqual(connection.calls.slice(0, 2), ['begin', 'INSERT INTO stores (store_name, store_code, status) VALUES (?, ?, ?)']);
   assert.equal(connection.calls.at(-2), 'commit');
   assert.equal(connection.calls.at(-1), 'release');

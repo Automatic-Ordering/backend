@@ -30,23 +30,23 @@ const getStoreInputError = (body, { requireAll = false } = {}) => {
   const hasPassword = body.password !== undefined;
 
   if (requireAll && (!hasStoreCode || !hasStoreName || !hasPassword)) {
-    return 'store_code, store_name, and password are required.';
+    return '점포 코드, 점포명, 비밀번호는 필수입니다.';
   }
 
   if (hasStoreCode && (typeof body.store_code !== 'string' || !body.store_code.trim())) {
-    return 'store_code must be a non-empty string.';
+    return '점포 코드는 비어 있지 않은 문자열이어야 합니다.';
   }
 
   if (hasStoreName && (typeof body.store_name !== 'string' || !body.store_name.trim())) {
-    return 'store_name must be a non-empty string.';
+    return '점포명은 비어 있지 않은 문자열이어야 합니다.';
   }
 
   if (hasPassword && (typeof body.password !== 'string' || body.password.length < 8)) {
-    return 'password must be at least 8 characters.';
+    return '비밀번호는 8자 이상이어야 합니다.';
   }
 
   if (hasStoreCode && body.store_code.trim().length > 32) {
-    return 'store_code must be at most 32 characters.';
+    return '점포 코드는 32자 이하여야 합니다.';
   }
 
   return null;
@@ -56,7 +56,7 @@ const handleSequelizeError = (error, res, next) => {
   if (error instanceof UniqueConstraintError) {
     return res.status(409).json({
       error: 'DUPLICATE_STORE_CODE',
-      message: 'store_code is already in use.',
+      message: '점포 코드가 이미 사용 중입니다.',
     });
   }
 
@@ -70,7 +70,7 @@ const handleSequelizeError = (error, res, next) => {
   if (error instanceof ForeignKeyConstraintError) {
     return res.status(409).json({
       error: 'CONFLICT',
-      message: 'The store is referenced by other data.',
+      message: '해당 점포가 다른 데이터에서 참조되고 있습니다.',
     });
   }
 
@@ -238,7 +238,7 @@ router.get('/:id', async (req, res, next) => {
   if (!isValidStoreId(req.params.id)) {
     return res.status(404).json({
       error: 'NOT_FOUND',
-      message: 'Store not found.',
+      message: '점포를 찾을 수 없습니다.',
     });
   }
 
@@ -247,7 +247,7 @@ router.get('/:id', async (req, res, next) => {
     if (!store) {
       return res.status(404).json({
         error: 'NOT_FOUND',
-        message: 'Store not found.',
+        message: '점포를 찾을 수 없습니다.',
       });
     }
 
@@ -261,14 +261,14 @@ router.patch('/:id', async (req, res, next) => {
   if (!isValidStoreId(req.params.id)) {
     return res.status(404).json({
       error: 'NOT_FOUND',
-      message: 'Store not found.',
+      message: '점포를 찾을 수 없습니다.',
     });
   }
 
   if (req.body?.password !== undefined) {
     return res.status(400).json({
       error: 'INVALID_INPUT',
-      message: 'password must be changed through the password API.',
+      message: '비밀번호는 비밀번호 변경 API를 통해 변경해야 합니다.',
     });
   }
 
@@ -287,7 +287,7 @@ router.patch('/:id', async (req, res, next) => {
   if (Object.keys(updates).length === 0) {
     return res.status(400).json({
       error: 'INVALID_INPUT',
-      message: 'store_code or store_name is required.',
+      message: '점포 코드 또는 점포명은 필수입니다.',
     });
   }
 
@@ -296,7 +296,7 @@ router.patch('/:id', async (req, res, next) => {
     if (!store) {
       return res.status(404).json({
         error: 'NOT_FOUND',
-        message: 'Store not found.',
+        message: '점포를 찾을 수 없습니다.',
       });
     }
 
@@ -311,7 +311,7 @@ router.delete('/:id', async (req, res, next) => {
   if (!isValidStoreId(req.params.id)) {
     return res.status(404).json({
       error: 'NOT_FOUND',
-      message: 'Store not found.',
+      message: '점포를 찾을 수 없습니다.',
     });
   }
 
@@ -320,7 +320,7 @@ router.delete('/:id', async (req, res, next) => {
     if (!store) {
       return res.status(404).json({
         error: 'NOT_FOUND',
-        message: 'Store not found.',
+        message: '점포를 찾을 수 없습니다.',
       });
     }
 

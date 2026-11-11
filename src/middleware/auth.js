@@ -11,19 +11,19 @@ const getJwtSecret = () => {
 const authenticate = async (req, res, next) => {
   const authorization = req.get('authorization');
   if (!authorization || !authorization.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'UNAUTHORIZED', message: 'Bearer token is required.' });
+    return res.status(401).json({ error: 'UNAUTHORIZED', message: '인증 헤더가 필요합니다.' });
   }
 
   const token = authorization.slice(7).trim();
   if (!token) {
-    return res.status(401).json({ error: 'UNAUTHORIZED', message: 'Bearer token is required.' });
+    return res.status(401).json({ error: 'UNAUTHORIZED', message: '인증 토큰이 필요합니다.' });
   }
 
   let payload;
   try {
     payload = jwt.verify(token, getJwtSecret());
   } catch {
-    return res.status(401).json({ error: 'UNAUTHORIZED', message: 'Invalid or expired token.' });
+    return res.status(401).json({ error: 'UNAUTHORIZED', message: '유효하지 않거나 만료된 토큰입니다.' });
   }
 
   try {
@@ -62,7 +62,7 @@ const authenticate = async (req, res, next) => {
       }
     }
 
-    return res.status(401).json({ error: 'UNAUTHORIZED', message: 'Authentication is no longer valid.' });
+    return res.status(401).json({ error: 'UNAUTHORIZED', message: '인증이 더 이상 유효하지 않습니다.' });
   } catch (error) {
     return next(error);
   }
@@ -70,7 +70,7 @@ const authenticate = async (req, res, next) => {
 
 const requireRole = (...roles) => (req, res, next) => {
   if (!req.user || !roles.includes(req.user.role)) {
-    return res.status(403).json({ error: 'FORBIDDEN', message: 'Insufficient permissions.' });
+    return res.status(403).json({ error: 'FORBIDDEN', message: '권한이 부족합니다.' });
   }
   return next();
 };
@@ -79,7 +79,7 @@ const rejectPasswordChangeRequired = (req, res, next) => {
   if (req.user?.role === 'STORE' && req.user.passwordChangeRequired) {
     return res.status(403).json({
       error: 'PASSWORD_CHANGE_REQUIRED',
-      message: 'Change the initial password before using this API.',
+      message: '이 API를 사용하기 전에 초기 비밀번호를 변경해야 합니다.',
     });
   }
   return next();

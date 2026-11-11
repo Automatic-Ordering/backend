@@ -24,7 +24,7 @@ const validateProductInput = ({ product_name: productName, category, price }) =>
     !Number.isFinite(Number(price)) ||
     Number(price) < 0
   ) {
-    return 'product_name, category, and a non-negative price are required.';
+    return '상품명, 카테고리, 0 이상인 가격은 필수입니다.';
   }
 
   return null;
@@ -135,7 +135,7 @@ router.get('/:productId', async (req, res, next) => {
     if (!product) {
       return res.status(404).json({
         error: 'NOT_FOUND',
-        message: 'Product not found.',
+        message: '상품을 찾을 수 없습니다.',
       });
     }
 
@@ -159,7 +159,7 @@ router.patch('/:productId', async (req, res, next) => {
     if (!product) {
       return res.status(404).json({
         error: 'NOT_FOUND',
-        message: 'Product not found.',
+        message: '상품을 찾을 수 없습니다.',
       });
     }
 
@@ -188,7 +188,7 @@ router.delete('/:productId', async (req, res, next) => {
     if (!product) {
       return res.status(404).json({
         error: 'NOT_FOUND',
-        message: 'Product not found.',
+        message: '상품을 찾을 수 없습니다.',
       });
     }
 
@@ -198,7 +198,7 @@ router.delete('/:productId', async (req, res, next) => {
     if (error instanceof ForeignKeyConstraintError) {
       return res.status(409).json({
         error: 'CONFLICT',
-        message: 'Product cannot be deleted while related data exists.',
+        message: '관련 데이터가 있는 상품은 삭제할 수 없습니다.',
       });
     }
 

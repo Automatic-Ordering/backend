@@ -1,5 +1,5 @@
 const crypto = require('crypto');
 
-const generateStoreCode = () => `STORE-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
+const generateStoreCode = () => String(crypto.randomInt(10000, 100000));
 
 module.exports = { generateStoreCode };

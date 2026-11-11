@@ -13,7 +13,7 @@ router.post('/', async (req, res, next) => {
   if (typeof storeName !== 'string' || !storeName.trim() || typeof storePassword !== 'string' || storePassword.length < 8) {
     return res.status(400).json({
       error: 'INVALID_INPUT',
-      message: 'store_name is required and initial_password must be at least 8 characters.',
+      message: '점포명은 필수이며 초기 비밀번호는 8자 이상이어야 합니다.',
     });
   }
 
@@ -72,7 +72,7 @@ router.get('/:storeId', async (req, res, next) => {
          FROM stores WHERE store_id = ?`,
       [req.params.storeId],
     );
-    if (!rows[0]) return res.status(404).json({ error: 'NOT_FOUND', message: 'Store not found.' });
+    if (!rows[0]) return res.status(404).json({ error: 'NOT_FOUND', message: '점포를 찾을 수 없습니다.' });
     return res.json(rows[0]);
   } catch (error) {
     return next(error);
@@ -82,14 +82,14 @@ router.get('/:storeId', async (req, res, next) => {
 router.patch('/:storeId', async (req, res, next) => {
   const { store_name: storeName } = req.body || {};
   if (typeof storeName !== 'string' || !storeName.trim()) {
-    return res.status(400).json({ error: 'INVALID_INPUT', message: 'store_name is required.' });
+    return res.status(400).json({ error: 'INVALID_INPUT', message: '점포명은 필수입니다.' });
   }
   try {
     const [result] = await pool.query(
       'UPDATE stores SET store_name = ?, updated_at = CURRENT_TIMESTAMP WHERE store_id = ?',
       [storeName.trim(), req.params.storeId],
     );
-    if (!result.affectedRows) return res.status(404).json({ error: 'NOT_FOUND', message: 'Store not found.' });
+    if (!result.affectedRows) return res.status(404).json({ error: 'NOT_FOUND', message: '점포를 찾을 수 없습니다.' });
     return res.json({ store_id: Number(req.params.storeId), store_name: storeName.trim() });
   } catch (error) {
     return next(error);
@@ -99,14 +99,14 @@ router.patch('/:storeId', async (req, res, next) => {
 router.patch('/:storeId/status', async (req, res, next) => {
   const { status } = req.body || {};
   if (!['ACTIVE', 'SUSPENDED'].includes(status)) {
-    return res.status(400).json({ error: 'INVALID_INPUT', message: 'status must be ACTIVE or SUSPENDED.' });
+    return res.status(400).json({ error: 'INVALID_INPUT', message: '상태는 ACTIVE 또는 SUSPENDED여야 합니다.' });
   }
   try {
     const [result] = await pool.query(
       'UPDATE stores SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE store_id = ?',
       [status, req.params.storeId],
     );
-    if (!result.affectedRows) return res.status(404).json({ error: 'NOT_FOUND', message: 'Store not found.' });
+    if (!result.affectedRows) return res.status(404).json({ error: 'NOT_FOUND', message: '점포를 찾을 수 없습니다.' });
     return res.json({ store_id: Number(req.params.storeId), status });
   } catch (error) {
     return next(error);

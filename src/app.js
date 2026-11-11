@@ -34,7 +34,32 @@ if (!['http:', 'https:'].includes(parsedServerUrl.protocol)) {
 }
 
 const swaggerServerUrl = serverUrl.replace(/\/+$/, '');
+const allowedOrigins = new Set(
+  (process.env.CORS_ORIGINS || 'http://localhost:5173,https://store.moonlights.dev')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean),
+);
 
+app.use((req, res, next) => {
+  const requestOrigin = req.headers.origin;
+
+  if (requestOrigin && allowedOrigins.has(requestOrigin)) {
+    res.setHeader('Access-Control-Allow-Origin', requestOrigin);
+    res.setHeader('Access-Control-Allow-Methods', 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS');
+    res.setHeader(
+      'Access-Control-Allow-Headers',
+      req.headers['access-control-request-headers'] || 'Content-Type, Authorization',
+    );
+    res.setHeader('Vary', 'Origin');
+  }
+
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(requestOrigin && allowedOrigins.has(requestOrigin) ? 204 : 403);
+  }
+
+  return next();
+});
 app.use(express.json());
 app.use('/api/auth', authRoutes);
 app.use('/api/admin/auth', adminAuthRoutes);
@@ -197,7 +222,7 @@ app.get('/health', (req, res) => {
   if (verbose !== undefined && verbose !== 'true' && verbose !== 'false') {
     return res.status(400).json({
       error: 'INVALID_PARAMETER',
-      message: 'verbose must be true or false.',
+      message: 'verbose는 true 또는 false여야 합니다.',
     });
   }
 
@@ -254,7 +279,7 @@ app.use((error, req, res, next) => {
   console.error('Unhandled request error:', error.message);
   return res.status(500).json({
     error: 'INTERNAL_SERVER_ERROR',
-    message: 'An unexpected server error occurred.',
+    message: '예상하지 못한 서버 오류가 발생했습니다.',
   });
 });
 
