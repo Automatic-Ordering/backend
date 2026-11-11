@@ -13,6 +13,7 @@ const {
   Order,
 } = require('../../models');
 const { hashPassword } = require('../utils/password');
+const { generateStoreCode } = require('../utils/store-code');
 const { authenticate, requireRole } = require('../middleware/auth');
 
 const router = express.Router();
@@ -30,13 +31,15 @@ const serializeStore = (store) => ({
 
 const isValidStoreId = (storeId) => /^\d+$/.test(storeId) && Number(storeId) > 0;
 
-const getStoreInputError = (body, { requireAll = false } = {}) => {
+const getStoreInputError = (body, { isCreate = false } = {}) => {
   const hasStoreCode = body.store_code !== undefined;
   const hasStoreName = body.store_name !== undefined;
   const hasPassword = body.password !== undefined;
 
-  if (requireAll && (!hasStoreCode || !hasStoreName || !hasPassword)) {
-    return '점포 코드, 점포명, 비밀번호는 필수입니다.';
+  if (isCreate) {
+    if (!hasStoreName || typeof body.store_name !== 'string' || !body.store_name.trim()) {
+      return '점포명은 비어 있지 않은 문자열이어야 합니다.';
+    }
   }
 
   if (hasStoreCode && (typeof body.store_code !== 'string' || !body.store_code.trim())) {
@@ -56,6 +59,21 @@ const getStoreInputError = (body, { requireAll = false } = {}) => {
   }
 
   return null;
+};
+
+const findUniqueStoreCode = async (transaction) => {
+  const maxAttempts = 10;
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const candidate = generateStoreCode();
+    const existing = await Store.findOne({
+      where: { storeCode: candidate },
+      ...(transaction ? { transaction } : {}),
+    });
+    if (!existing) {
+      return candidate;
+    }
+  }
+  throw new Error('점포 코드 자동 생성에 실패했습니다. 다시 시도해주세요.');
 };
 
 const handleSequelizeError = (error, res, next) => {
@@ -98,14 +116,14 @@ const handleSequelizeError = (error, res, next) => {
  *         application/json:
  *           schema:
  *             type: object
- *             required: [store_code, store_name, password]
+ *             required: [store_name]
  *             properties:
- *               store_code:
- *                 type: string
- *                 example: STORE001
  *               store_name:
  *                 type: string
  *                 example: 강남점
+ *               store_code:
+ *                 type: string
+ *                 example: 12345
  *               password:
  *                 type: string
  *                 format: password
@@ -193,7 +211,7 @@ const handleSequelizeError = (error, res, next) => {
  *         description: 점포를 찾을 수 없습니다.
  */
 router.post('/', async (req, res, next) => {
-  const inputError = getStoreInputError(req.body || {}, { requireAll: true });
+  const inputError = getStoreInputError(req.body || {}, { isCreate: true });
   if (inputError) {
     return res.status(400).json({
       error: 'INVALID_INPUT',
@@ -201,33 +219,59 @@ router.post('/', async (req, res, next) => {
     });
   }
 
-  try {
-    const store = await sequelize.transaction(async (transaction) => {
-      const createdStore = await Store.create(
-        {
-          storeCode: req.body.store_code.trim(),
-          storeName: req.body.store_name.trim(),
-          status: 'ACTIVE',
-        },
-        { transaction },
-      );
+  const rawStoreCode = typeof req.body?.store_code === 'string' && req.body.store_code.trim()
+    ? req.body.store_code.trim()
+    : null;
+  const storeName = req.body.store_name.trim();
 
-      await StoreAccount.create(
-        {
-          storeId: createdStore.storeId,
-          passwordHash: await hashPassword(req.body.password),
-          passwordChangeRequired: true,
-        },
-        { transaction },
-      );
+  const maxAttempts = rawStoreCode ? 1 : 5;
+  let lastError;
 
-      return createdStore;
-    });
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    try {
+      const storeCode = rawStoreCode || (await findUniqueStoreCode());
+      const password = typeof req.body?.password === 'string' && req.body.password
+        ? req.body.password
+        : `Store${storeCode}!`;
 
-    return res.status(201).json(serializeStore(store));
-  } catch (error) {
-    return handleSequelizeError(error, res, next);
+      const store = await sequelize.transaction(async (transaction) => {
+        const createdStore = await Store.create(
+          {
+            storeCode,
+            storeName,
+            status: 'ACTIVE',
+          },
+          { transaction },
+        );
+
+        await StoreAccount.create(
+          {
+            storeId: createdStore.storeId,
+            passwordHash: await hashPassword(password),
+            passwordChangeRequired: true,
+          },
+          { transaction },
+        );
+
+        return createdStore;
+      });
+
+      const responsePayload = serializeStore(store);
+      if (!req.body?.password) {
+        responsePayload.initial_password = password;
+      }
+
+      return res.status(201).json(responsePayload);
+    } catch (error) {
+      lastError = error;
+      if (error instanceof UniqueConstraintError && !rawStoreCode && attempt < maxAttempts - 1) {
+        continue;
+      }
+      return handleSequelizeError(error, res, next);
+    }
   }
+
+  return handleSequelizeError(lastError, res, next);
 });
 
 router.get('/', async (req, res, next) => {
