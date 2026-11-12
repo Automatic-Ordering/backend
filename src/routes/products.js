@@ -37,26 +37,41 @@ const validateProductInput = ({ product_name: productName, category, price }) =>
  *     tags:
  *       - Products
  *     summary: 상품 등록
+ *     description: 본사 공용 상품 카탈로그에 신규 상품을 등록합니다.
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
  *             type: object
- *             required: [product_name, category, price]
+ *             required:
+ *               - product_name
+ *               - category
+ *               - price
  *             properties:
  *               product_name:
  *                 type: string
+ *                 example: 삼각김밥
  *               category:
  *                 type: string
+ *                 example: 식품
  *               price:
  *                 type: number
  *                 minimum: 0
+ *                 example: 1500
  *     responses:
  *       '201':
- *         description: 상품이 등록되었습니다.
+ *         description: 상품이 성공적으로 등록되었습니다.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Product'
  *       '400':
  *         description: 입력값이 올바르지 않습니다.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
  */
 router.post('/', async (req, res, next) => {
   const validationMessage = validateProductInput(req.body || {});
@@ -94,9 +109,16 @@ router.post('/', async (req, res, next) => {
  *     tags:
  *       - Products
  *     summary: 상품 전체 조회
+ *     description: 전체 상품 카탈로그 목록을 최신 등록순으로 조회합니다.
  *     responses:
  *       '200':
  *         description: 상품 목록
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/Product'
  */
 router.get('/', async (req, res, next) => {
   try {
@@ -117,17 +139,27 @@ router.get('/', async (req, res, next) => {
  *     tags:
  *       - Products
  *     summary: 상품 단일 조회
+ *     description: 상품 ID로 상품 정보를 조회합니다.
  *     parameters:
  *       - in: path
  *         name: productId
  *         required: true
+ *         description: 상품 ID
  *         schema:
  *           type: integer
  *     responses:
  *       '200':
- *         description: 상품 정보
+ *         description: 상품 상세 정보
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Product'
  *       '404':
  *         description: 상품을 찾을 수 없습니다.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
  */
 router.get('/:productId', async (req, res, next) => {
   try {
@@ -145,6 +177,62 @@ router.get('/:productId', async (req, res, next) => {
   }
 });
 
+/**
+ * @openapi
+ * /api/products/{productId}:
+ *   patch:
+ *     tags:
+ *       - Products
+ *     summary: 상품 정보 수정
+ *     description: 상품의 이름, 카테고리, 가격을 수정합니다.
+ *     parameters:
+ *       - in: path
+ *         name: productId
+ *         required: true
+ *         description: 상품 ID
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - product_name
+ *               - category
+ *               - price
+ *             properties:
+ *               product_name:
+ *                 type: string
+ *                 example: 삼각김밥(참치마요)
+ *               category:
+ *                 type: string
+ *                 example: 식품
+ *               price:
+ *                 type: number
+ *                 minimum: 0
+ *                 example: 1600
+ *     responses:
+ *       '200':
+ *         description: 상품 정보가 수정되었습니다.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Product'
+ *       '400':
+ *         description: 입력값이 올바르지 않습니다.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       '404':
+ *         description: 상품을 찾을 수 없습니다.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
 router.patch('/:productId', async (req, res, next) => {
   const validationMessage = validateProductInput(req.body || {});
   if (validationMessage) {
@@ -182,6 +270,37 @@ router.patch('/:productId', async (req, res, next) => {
   }
 });
 
+/**
+ * @openapi
+ * /api/products/{productId}:
+ *   delete:
+ *     tags:
+ *       - Products
+ *     summary: 상품 삭제
+ *     description: 상품 카탈로그에서 상품을 삭제합니다. 점포 재고 등 관련 데이터가 참조하고 있는 경우 삭제할 수 없습니다.
+ *     parameters:
+ *       - in: path
+ *         name: productId
+ *         required: true
+ *         description: 상품 ID
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       '204':
+ *         description: 상품이 성공적으로 삭제되었습니다.
+ *       '404':
+ *         description: 상품을 찾을 수 없습니다.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       '409':
+ *         description: 관련 데이터(재고 등)가 있는 상품은 삭제할 수 없습니다.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
 router.delete('/:productId', async (req, res, next) => {
   try {
     const product = await Product.findByPk(req.params.productId);

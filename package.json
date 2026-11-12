@@ -8,6 +8,7 @@
     "dev": "nodemon src/app.js",
     "migrate": "node scripts/migrate.js",
     "seed:admin": "node scripts/seed-admin.js",
+    "seed:products": "node scripts/seed-products.js",
     "test": "node --test \"test/**/*.test.js\""
   },
   "keywords": [],

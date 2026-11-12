@@ -108,6 +108,7 @@ const handleSequelizeError = (error, res, next) => {
  *     tags:
  *       - Admin Stores
  *     summary: 점포 생성
+ *     description: 점포를 생성하고 점포 계정을 함께 초기화합니다. store_code가 생략되면 5자리 숫자로 자동 생성되며, password가 생략되면 Store{store_code}! 형식의 초기 비밀번호가 발급됩니다.
  *     security:
  *       - bearerAuth: []
  *     requestBody:
@@ -116,99 +117,54 @@ const handleSequelizeError = (error, res, next) => {
  *         application/json:
  *           schema:
  *             type: object
- *             required: [store_name]
+ *             required:
+ *               - store_name
  *             properties:
  *               store_name:
  *                 type: string
+ *                 description: 점포명 (필수)
  *                 example: 강남점
  *               store_code:
  *                 type: string
+ *                 description: 점포 코드 (미입력 시 5자리 자동 생성, 최대 32자)
  *                 example: 12345
  *               password:
  *                 type: string
  *                 format: password
  *                 minLength: 8
+ *                 description: 점포 초기 비밀번호 (미입력 시 Store{store_code}! 자동 생성)
+ *                 example: StorePass123!
  *     responses:
  *       '201':
  *         description: 점포가 생성되었습니다.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/StoreCreateResponse'
  *       '400':
  *         description: 입력값이 올바르지 않습니다.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       '401':
+ *         description: 인증 실패 (토큰 없음 또는 유효하지 않음)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       '403':
+ *         description: 권한 부족 (관리자 권한 필요)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
  *       '409':
  *         description: 점포 코드가 중복됩니다.
- *   get:
- *     tags:
- *       - Admin Stores
- *     summary: 전체 점포 조회
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       '200':
- *         description: 점포 목록
- * /api/admin/stores/{id}:
- *   get:
- *     tags:
- *       - Admin Stores
- *     summary: 특정 점포 조회
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: integer
- *     responses:
- *       '200':
- *         description: 점포 정보
- *       '404':
- *         description: 점포를 찾을 수 없습니다.
- *   patch:
- *     tags:
- *       - Admin Stores
- *     summary: 점포 정보 수정
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: integer
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               store_code:
- *                 type: string
- *               store_name:
- *                 type: string
- *     responses:
- *       '200':
- *         description: 점포 정보가 수정되었습니다.
- *       '404':
- *         description: 점포를 찾을 수 없습니다.
- *   delete:
- *     tags:
- *       - Admin Stores
- *     summary: 점포 폐점 처리
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: integer
- *     responses:
- *       '204':
- *         description: 점포와 관련 데이터가 영구 삭제되었습니다.
- *       '400':
- *         description: 이용 정지 상태인 점포만 폐점 처리할 수 있습니다.
- *       '404':
- *         description: 점포를 찾을 수 없습니다.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
  */
 router.post('/', async (req, res, next) => {
   const inputError = getStoreInputError(req.body || {}, { isCreate: true });
@@ -274,6 +230,38 @@ router.post('/', async (req, res, next) => {
   return handleSequelizeError(lastError, res, next);
 });
 
+/**
+ * @openapi
+ * /api/admin/stores:
+ *   get:
+ *     tags:
+ *       - Admin Stores
+ *     summary: 전체 점포 목록 조회
+ *     description: 전체 점포 목록을 최신 등록순으로 조회합니다.
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       '200':
+ *         description: 점포 목록
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/Store'
+ *       '401':
+ *         description: 인증 실패
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       '403':
+ *         description: 관리자 권한 필요
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
 router.get('/', async (req, res, next) => {
   try {
     const stores = await Store.findAll({
@@ -286,6 +274,49 @@ router.get('/', async (req, res, next) => {
   }
 });
 
+/**
+ * @openapi
+ * /api/admin/stores/{id}:
+ *   get:
+ *     tags:
+ *       - Admin Stores
+ *     summary: 특정 점포 단일 조회
+ *     description: 점포 ID로 점포 상세 정보를 조회합니다.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         description: 점포 ID
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       '200':
+ *         description: 점포 상세 정보
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Store'
+ *       '401':
+ *         description: 인증 실패
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       '403':
+ *         description: 관리자 권한 필요
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       '404':
+ *         description: 점포를 찾을 수 없습니다.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
 router.get('/:id', async (req, res, next) => {
   if (!isValidStoreId(req.params.id)) {
     return res.status(404).json({
@@ -309,6 +340,76 @@ router.get('/:id', async (req, res, next) => {
   }
 });
 
+/**
+ * @openapi
+ * /api/admin/stores/{id}:
+ *   patch:
+ *     tags:
+ *       - Admin Stores
+ *     summary: 점포 정보 수정
+ *     description: 점포 코드 또는 점포명을 수정합니다. 비밀번호는 이 API를 통해 변경할 수 없습니다.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         description: 점포 ID
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               store_code:
+ *                 type: string
+ *                 description: 변경할 점포 코드 (최대 32자)
+ *                 example: 54321
+ *               store_name:
+ *                 type: string
+ *                 description: 변경할 점포명
+ *                 example: 강남역삼호점
+ *     responses:
+ *       '200':
+ *         description: 점포 정보 수정 성공
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Store'
+ *       '400':
+ *         description: 입력값이 올바르지 않거나 변경할 필드가 없습니다.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       '401':
+ *         description: 인증 실패
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       '403':
+ *         description: 관리자 권한 필요
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       '404':
+ *         description: 점포를 찾을 수 없습니다.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       '409':
+ *         description: 점포 코드가 이미 사용 중입니다.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
 router.patch('/:id', async (req, res, next) => {
   if (!isValidStoreId(req.params.id)) {
     return res.status(404).json({
@@ -359,6 +460,68 @@ router.patch('/:id', async (req, res, next) => {
   }
 });
 
+/**
+ * @openapi
+ * /api/admin/stores/{id}/status:
+ *   patch:
+ *     tags:
+ *       - Admin Stores
+ *     summary: 점포 상태 변경 (활성화 / 이용 정지)
+ *     description: 점포 상태를 ACTIVE 또는 SUSPENDED로 변경합니다.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         description: 점포 ID
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - status
+ *             properties:
+ *               status:
+ *                 type: string
+ *                 enum: [ACTIVE, SUSPENDED]
+ *                 example: SUSPENDED
+ *     responses:
+ *       '200':
+ *         description: 상태 변경 성공
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Store'
+ *       '400':
+ *         description: 상태 값이 올바르지 않습니다 (ACTIVE 또는 SUSPENDED만 가능).
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       '401':
+ *         description: 인증 실패
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       '403':
+ *         description: 관리자 권한 필요
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       '404':
+ *         description: 점포를 찾을 수 없습니다.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
 router.patch('/:id/status', async (req, res, next) => {
   if (!isValidStoreId(req.params.id)) {
     return res.status(404).json({
@@ -391,6 +554,57 @@ router.patch('/:id/status', async (req, res, next) => {
   }
 });
 
+/**
+ * @openapi
+ * /api/admin/stores/{id}:
+ *   delete:
+ *     tags:
+ *       - Admin Stores
+ *     summary: 점포 폐점 처리
+ *     description: 점포와 관련된 재고, 매출, 발주, 계정 데이터를 영구 삭제합니다. 이용 정지(SUSPENDED) 상태인 점포만 폐점 처리할 수 있습니다.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         description: 점포 ID
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       '204':
+ *         description: 점포와 관련 데이터가 성공적으로 영구 삭제되었습니다.
+ *       '400':
+ *         description: 이용 정지(SUSPENDED) 상태인 점포만 폐점 처리할 수 있습니다.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       '401':
+ *         description: 인증 실패
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       '403':
+ *         description: 관리자 권한 필요
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       '404':
+ *         description: 점포를 찾을 수 없습니다.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       '409':
+ *         description: 참조 무결성 충돌 등으로 삭제 실패
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
 router.delete('/:id', async (req, res, next) => {
   if (!isValidStoreId(req.params.id)) {
     return res.status(404).json({
