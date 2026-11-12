@@ -14,6 +14,9 @@ const {
 } = require('../../models');
 const { hashPassword } = require('../utils/password');
 const { generateStoreCode } = require('../utils/store-code');
+const { Product } = require('../../models');
+const { StoreInventory } = require('../../models');
+const { getSafetyStock } = require('../utils/inventoryPolicy');
 const { authenticate, requireRole } = require('../middleware/auth');
 
 const router = express.Router();
@@ -191,6 +194,7 @@ router.post('/', async (req, res, next) => {
         : `Store${storeCode}!`;
 
       const store = await sequelize.transaction(async (transaction) => {
+        // ① 점포 레코드 생성
         const createdStore = await Store.create(
           {
             storeCode,
@@ -200,6 +204,7 @@ router.post('/', async (req, res, next) => {
           { transaction },
         );
 
+        // ② 점포 계정 생성
         await StoreAccount.create(
           {
             storeId: createdStore.storeId,
@@ -209,6 +214,28 @@ router.post('/', async (req, res, next) => {
           { transaction },
         );
 
+        // ③ 전체 상품 조회 (productId + category)
+        const products = await Product.findAll({
+          attributes: ['productId', 'category'],
+          transaction,
+        });
+
+        // ④ 재고 행 준비 (current_stock=0, safety_stock=policy)
+        const inventoryRows = products.map(p => ({
+          storeId: createdStore.storeId,
+          productId: p.productId,
+          currentStock: 0,
+          safetyStock: getSafetyStock(p.category),
+        }));
+
+        // ⑤ bulkCreate – 중복 방지를 위해 예외 처리
+        await StoreInventory.bulkCreate(inventoryRows, { transaction })
+          .catch(err => {
+            if (err.name !== 'SequelizeUniqueConstraintError') throw err;
+            // 중복이면 무시 (이미 존재)
+          });
+
+        // ⑥ 최종적으로 생성된 Store 레코드 반환
         return createdStore;
       });
 

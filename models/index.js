@@ -5,7 +5,9 @@ const Product = require('./Product');
 const Inventory = require('./Inventory');
 const Sales = require('./Sales');
 const Order = require('./Order');
+const StoreInventory = require('./StoreInventory');
 
+// Associations
 Store.hasMany(Inventory, {
   foreignKey: 'storeId',
   sourceKey: 'storeId',
@@ -17,11 +19,13 @@ Store.hasOne(StoreAccount, {
   sourceKey: 'storeId',
   as: 'account',
 });
+
 StoreAccount.belongsTo(Store, {
   foreignKey: 'storeId',
   targetKey: 'storeId',
   as: 'store',
 });
+
 Inventory.belongsTo(Store, {
   foreignKey: 'storeId',
   targetKey: 'storeId',
@@ -33,7 +37,33 @@ Product.hasMany(Inventory, {
   sourceKey: 'productId',
   as: 'inventories',
 });
+
 Inventory.belongsTo(Product, {
+  foreignKey: 'productId',
+  targetKey: 'productId',
+  as: 'product',
+});
+
+// StoreInventory associations (optional but helpful)
+Store.hasMany(StoreInventory, {
+  foreignKey: 'storeId',
+  sourceKey: 'storeId',
+  as: 'storeInventories',
+});
+
+Product.hasMany(StoreInventory, {
+  foreignKey: 'productId',
+  sourceKey: 'productId',
+  as: 'storeInventories',
+});
+
+StoreInventory.belongsTo(Store, {
+  foreignKey: 'storeId',
+  targetKey: 'storeId',
+  as: 'store',
+});
+
+StoreInventory.belongsTo(Product, {
   foreignKey: 'productId',
   targetKey: 'productId',
   as: 'product',
@@ -44,6 +74,7 @@ Store.hasMany(Sales, {
   sourceKey: 'storeId',
   as: 'sales',
 });
+
 Sales.belongsTo(Store, {
   foreignKey: 'storeId',
   targetKey: 'storeId',
@@ -55,6 +86,7 @@ Product.hasMany(Sales, {
   sourceKey: 'productId',
   as: 'sales',
 });
+
 Sales.belongsTo(Product, {
   foreignKey: 'productId',
   targetKey: 'productId',
@@ -66,6 +98,7 @@ Store.hasMany(Order, {
   sourceKey: 'storeId',
   as: 'orders',
 });
+
 Order.belongsTo(Store, {
   foreignKey: 'storeId',
   targetKey: 'storeId',
@@ -77,6 +110,7 @@ Product.hasMany(Order, {
   sourceKey: 'productId',
   as: 'orders',
 });
+
 Order.belongsTo(Product, {
   foreignKey: 'productId',
   targetKey: 'productId',
@@ -91,4 +125,5 @@ module.exports = {
   Inventory,
   Sales,
   Order,
+  StoreInventory,
 };

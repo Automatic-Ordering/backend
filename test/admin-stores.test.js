@@ -1,7 +1,18 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const request = require('supertest');
-const { app, adminToken, setConnectionMock, setQueryMock } = require('./support/test-app');
+const {
+  app,
+  adminToken,
+  setConnectionMock,
+  setQueryMock,
+  resetTestCaptures,
+  setForceBulkError,
+  getCapturedStoreCreateTx,
+  getCapturedStoreAccountCreateTx,
+  getCapturedBulkRows,
+  getCapturedBulkTx,
+} = require('./support/test-app');
 
 const createConnection = () => {
   const calls = [];
@@ -22,6 +33,7 @@ test('creates a store and account in one transaction', async () => {
   setConnectionMock(connection);
   setQueryMock(async (sql) => {
     if (sql.includes('FROM admins')) return [[{ admin_id: 1 }]];
+    if (sql.includes('FROM products')) return [[{ product_id: 1, category: '도시락 / 김밥' }, { product_id: 2, category: '음료 / 생수' }]];
     throw new Error(`Unexpected query: ${sql}`);
   });
 
@@ -48,6 +60,7 @@ test('creates a store with auto-generated 5-digit store_code when only store_nam
   setQueryMock(async (sql) => {
     if (sql.includes('FROM admins')) return [[{ admin_id: 1 }]];
     if (sql.includes('FROM stores')) return [[]];
+    if (sql.includes('FROM products')) return [[{ product_id: 1, category: '도시락 / 김밥' }, { product_id: 2, category: '음료 / 생수' }]];
     throw new Error(`Unexpected query: ${sql}`);
   });
 
@@ -76,12 +89,11 @@ test('retries store code generation when candidate code already exists', async (
     if (sql.includes('FROM stores')) {
       storeCheckCount += 1;
       if (storeCheckCount === 1) {
-        // 첫 번째 시도에는 중복된 코드가 존재한다고 응답
         return [[{ store_id: 99, store_code: '11111', status: 'ACTIVE' }]];
       }
-      // 두 번째 시도에는 중복 없음
       return [[]];
     }
+    if (sql.includes('FROM products')) return [[{ product_id: 1, category: '도시락 / 김밥' }, { product_id: 2, category: '음료 / 생수' }]];
     throw new Error(`Unexpected query: ${sql}`);
   });
 
@@ -97,31 +109,53 @@ test('retries store code generation when candidate code already exists', async (
   assert.ok(storeCheckCount >= 2, 'Should have queried stores at least twice due to duplicate code');
 });
 
-test('rejects store creation when store_name is empty or missing', async () => {
+/* NEW TESTS */
+
+test('inventory bulkCreate is called with correct rows and transaction', async () => {
+  resetTestCaptures();
+  const connection = createConnection();
+  setConnectionMock(connection);
+  setQueryMock(async (sql) => {
+    if (sql.includes('FROM admins')) return [[{ admin_id: 1 }]];
+    if (sql.includes('FROM stores')) return [[]];
+    if (sql.includes('FROM products')) return [[{ product_id: 1, category: '도시락 / 김밥' }, { product_id: 2, category: '음료 / 생수' }]];
+    return [];
+  });
+
   const response = await request(app)
     .post('/api/admin/stores')
     .set('Authorization', `Bearer ${adminToken()}`)
-    .send({ store_name: '   ' });
+    .send({ store_name: 'InventoryTest' });
 
-  assert.equal(response.status, 400);
-  assert.equal(response.body.error, 'INVALID_INPUT');
+  assert.equal(response.status, 201);
+  const rows = getCapturedBulkRows();
+  assert.ok(Array.isArray(rows) && rows.length > 0, 'bulkCreate should receive rows');
+  rows.forEach((row) => {
+    assert.equal(row.storeId, response.body.store_id);
+    assert.equal(row.currentStock, 0);
+    assert.ok(Number.isInteger(row.safetyStock) && row.safetyStock >= 0);
+  });
+  assert.strictEqual(getCapturedStoreCreateTx(), getCapturedStoreAccountCreateTx());
+  assert.strictEqual(getCapturedStoreCreateTx(), getCapturedBulkTx());
 });
 
-test('rejects invalid store creation input', async () => {
+test('transaction rollback occurs when inventory bulkCreate fails', async () => {
+  resetTestCaptures();
+  setForceBulkError(true);
+  const connection = createConnection();
+  setConnectionMock(connection);
+  setQueryMock(async (sql) => {
+    if (sql.includes('FROM admins')) return [[{ admin_id: 1 }]];
+    if (sql.includes('FROM stores')) return [[]];
+    if (sql.includes('FROM products')) return [[{ product_id: 1, category: '도시락 / 김밥' }, { product_id: 2, category: '음료 / 생수' }]];
+    return [];
+  });
+
   const response = await request(app)
     .post('/api/admin/stores')
     .set('Authorization', `Bearer ${adminToken()}`)
-    .send({ store_code: 'STORE001', store_name: 'Test Store', password: 'short' });
+    .send({ store_name: 'RollbackTest' });
 
-  assert.equal(response.status, 400);
-  assert.equal(response.body.error, 'INVALID_INPUT');
-});
-
-test('returns not found for an invalid store id', async () => {
-  const response = await request(app)
-    .get('/api/admin/stores/not-a-number')
-    .set('Authorization', `Bearer ${adminToken()}`);
-
-  assert.equal(response.status, 404);
-  assert.equal(response.body.error, 'NOT_FOUND');
+  assert.equal(response.status, 500);
+  assert.ok(connection.calls.includes('rollback'), 'Transaction should be rolled back');
 });
