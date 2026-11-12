@@ -1,6 +1,8 @@
 const express = require('express');
-const { ForeignKeyConstraintError, ValidationError } = require('sequelize');
 const { Product } = require('../../models');
+const { ForeignKeyConstraintError, ValidationError } = require('sequelize');
+const { authenticate, requireRole } = require('../middleware/auth');
+
 
 const router = express.Router();
 
@@ -73,7 +75,7 @@ const validateProductInput = ({ product_name: productName, category, price }) =>
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  */
-router.post('/', async (req, res, next) => {
+router.post('/', authenticate, requireRole('ADMIN'), async (req, res, next) => {
   const validationMessage = validateProductInput(req.body || {});
   if (validationMessage) {
     return res.status(400).json({
@@ -120,12 +122,52 @@ router.post('/', async (req, res, next) => {
  *               items:
  *                 $ref: '#/components/schemas/Product'
  */
+
+// PATCH: 상품 정보 수정 (ADMIN 전용)
+router.patch('/:productId', authenticate, requireRole('ADMIN'), async (req, res, next) => {
+  const { productId } = req.params;
+  const validationMessage = validateProductInput(req.body || {});
+  if (validationMessage) {
+    return res.status(400).json({ error: 'INVALID_INPUT', message: validationMessage });
+  }
+  try {
+    const product = await Product.findByPk(productId);
+    if (!product) {
+      return res.status(404).json({ error: 'NOT_FOUND', message: '상품을 찾을 수 없습니다.' });
+    }
+    await product.update({
+      productName: req.body.product_name?.trim(),
+      category: req.body.category?.trim(),
+      price: req.body.price,
+    });
+    return res.json(serializeProduct(product));
+  } catch (error) {
+    if (error instanceof ValidationError) {
+      return res.status(400).json({ error: 'INVALID_INPUT', message: error.errors.map(({ message }) => message).join(', ') });
+    }
+    return next(error);
+  }
+});
+
+// DELETE: 상품 삭제 (ADMIN 전용)
+router.delete('/:productId', authenticate, requireRole('ADMIN'), async (req, res, next) => {
+  const { productId } = req.params;
+  try {
+    const rows = await Product.destroy({ where: { productId } });
+    if (!rows) {
+      return res.status(404).json({ error: 'NOT_FOUND', message: '상품을 찾을 수 없습니다.' });
+    }
+    return res.status(204).send();
+  } catch (error) {
+    return next(error);
+  }
+});
+
 router.get('/', async (req, res, next) => {
   try {
     const products = await Product.findAll({
       order: [['productId', 'DESC']],
     });
-
     return res.json(products.map(serializeProduct));
   } catch (error) {
     return next(error);
