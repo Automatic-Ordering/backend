@@ -6,6 +6,9 @@ const Inventory = require("./Inventory");
 const Sales = require("./Sales");
 const Order = require("./Order");
 const StoreInventory = require("./StoreInventory");
+const OrderSpecification = require("./OrderSpecification");
+const OrderSpecificationItem = require("./OrderSpecificationItem");
+const OrderStatusHistory = require("./OrderStatusHistory");
 
 // Associations
 Store.hasMany(Inventory, {
@@ -117,6 +120,39 @@ Order.belongsTo(Product, {
   as: "product",
 });
 
+// Order specification associations (발주 명세서)
+Store.hasMany(OrderSpecification, {
+  foreignKey: "storeId",
+  sourceKey: "storeId",
+  as: "orderSpecifications",
+});
+
+OrderSpecification.belongsTo(Store, {
+  foreignKey: "storeId",
+  targetKey: "storeId",
+  as: "store",
+});
+
+OrderSpecification.hasMany(OrderSpecificationItem, {
+  foreignKey: "orderSpecId",
+  as: "items",
+});
+
+OrderSpecificationItem.belongsTo(OrderSpecification, {
+  foreignKey: "orderSpecId",
+  as: "orderSpecification",
+});
+
+OrderSpecification.hasMany(OrderStatusHistory, {
+  foreignKey: "orderSpecId",
+  as: "statusHistories",
+});
+
+OrderStatusHistory.belongsTo(OrderSpecification, {
+  foreignKey: "orderSpecId",
+  as: "orderSpecification",
+});
+
 module.exports = {
   Admin,
   Store,
@@ -126,4 +162,7 @@ module.exports = {
   Sales,
   Order,
   StoreInventory,
+  OrderSpecification,
+  OrderSpecificationItem,
+  OrderStatusHistory,
 };

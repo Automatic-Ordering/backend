@@ -18,6 +18,8 @@ const storeProductRoutes = require("./routes/store-products");
 const storeSalesRoutes = require("./routes/store-sales");
 const storeOrderRoutes = require("./routes/store-orders");
 const adminOrderRoutes = require("./routes/admin-orders");
+const storeOrderSpecRoutes = require("./routes/store-order-specs");
+const adminOrderSpecRoutes = require("./routes/admin-order-specs");
 const { seedProducts } = require("../scripts/seed-products");
 
 const app = express();
@@ -83,6 +85,10 @@ app.use("/api/admin/stores", adminStoreRoutes);
 app.use("/api/products", productRoutes);
 app.use("/api/store/products", storeProductRoutes);
 app.use("/api/store/sales", storeSalesRoutes);
+// 발주 명세서(specs) 라우트를 legacy orders 라우트보다 먼저 마운트해야
+// /api/*/orders/:orderId 경로에 가려지지 않는다.
+app.use("/api/store/orders/specs", storeOrderSpecRoutes);
+app.use("/api/admin/orders/specs", adminOrderSpecRoutes);
 app.use("/api/store/orders", storeOrderRoutes);
 app.use("/api/admin/orders", adminOrderRoutes);
 
@@ -92,7 +98,7 @@ const swaggerDefinition = {
     title: "편의점 자동 발주 시스템 API",
     version: "1.0.0",
     description:
-      "편의점 자동 발주 시스템 백엔드 API 문서입니다. 관리자/점포 인증, 점포 관리, 본사 상품 카탈로그, 점포 재고 API를 제공합니다.",
+      "편의점 자동 발주 시스템 백엔드 API 문서입니다. 관리자/점포 인증, 점포 관리, 본사 상품 카탈로그, 점포 재고 API와 발주 명세서 작성/승인/발행/입고 API를 제공합니다.",
   },
   servers: [
     {
@@ -108,6 +114,14 @@ const swaggerDefinition = {
     { name: "Store Products", description: "점포 상품 및 재고 조회 API" },
     { name: "Store Orders", description: "점포 자동 발주 추천/확정/이력 API" },
     { name: "Admin Orders", description: "관리자 발주 관리 API" },
+    {
+      name: "Store Order Specs",
+      description: "점포 발주 명세서 작성/제출/입고 API",
+    },
+    {
+      name: "Admin Order Specs",
+      description: "본사 발주 명세서 승인/반려/발주서 발행 API",
+    },
   ],
   components: {
     securitySchemes: {
