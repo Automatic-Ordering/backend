@@ -30,6 +30,24 @@ Product.init(
         min: 0,
       },
     },
+    leadTimeDays: {
+      type: DataTypes.INTEGER.UNSIGNED,
+      allowNull: false,
+      defaultValue: 1,
+      field: 'lead_time_days',
+      validate: {
+        min: 1,
+      },
+    },
+    orderUnit: {
+      type: DataTypes.INTEGER.UNSIGNED,
+      allowNull: false,
+      defaultValue: 1,
+      field: 'order_unit',
+      validate: {
+        min: 1,
+      },
+    },
   },
   {
     sequelize,

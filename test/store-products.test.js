@@ -100,3 +100,78 @@ test('requires store authentication for the store product list', async () => {
     .set('Authorization', `Bearer ${adminToken()}`);
   assert.equal(adminResponse.status, 403);
 });
+
+test('paginated mode returns registered products with search', async () => {
+  setQueryMock(async (sql) => {
+    if (sql.includes('FROM stores s')) {
+      return [[{
+        store_id: 1,
+        store_code: '10001',
+        store_name: 'Store A',
+        status: 'ACTIVE',
+        account_id: 1,
+        password_change_required: 0,
+      }]];
+    }
+    if (sql.includes('FROM admins')) {
+      return [[{ admin_id: 1 }]];
+    }
+    throw new Error(`Unexpected authentication query: ${sql}`);
+  });
+
+  const queryCalls = [];
+  const originalQuery = sequelize.query;
+
+  sequelize.query = async (sql, options) => {
+    queryCalls.push({ sql, options });
+    if (sql.includes('COUNT(*)')) {
+      return [[{ total: 12 }]];
+    }
+    return [[
+      {
+        product_id: 2,
+        product_name: 'Cup Noodles',
+        category: 'Noodles',
+        price: '1500.00',
+        is_registered: 1,
+        current_stock: 20,
+        safety_stock: 5,
+      },
+    ]];
+  };
+
+  try {
+    const response = await request(app)
+      .get('/api/store/products?page=2&limit=5&search=컵면')
+      .set('Authorization', `Bearer ${storeToken()}`);
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.items.length, 1);
+    assert.equal(response.body.total, 12);
+    assert.equal(response.body.page, 2);
+    assert.equal(response.body.limit, 5);
+    assert.equal(response.body.total_pages, 3);
+
+    const first = response.body.items[0];
+    assert.equal(first.product_id, 2);
+    assert.equal(first.is_registered, true);
+    assert.equal(first.current_stock, 20);
+
+    assert.equal(queryCalls.length, 2);
+    assert.match(queryCalls[0].sql, /COUNT\(\*\)/i);
+    assert.equal(queryCalls[0].options.replacements.storeId, 1);
+    assert.equal(queryCalls[0].options.replacements.search, '%컵면%');
+    assert.match(queryCalls[1].sql, /LIMIT :limit OFFSET :offset/i);
+    assert.equal(queryCalls[1].options.replacements.limit, 5);
+    assert.equal(queryCalls[1].options.replacements.offset, 5);
+    assert.match(queryCalls[1].sql, /si\.inventory_id IS NOT NULL/i);
+
+    const invalidPage = await request(app)
+      .get('/api/store/products?page=0')
+      .set('Authorization', `Bearer ${storeToken()}`);
+    assert.equal(invalidPage.status, 400);
+    assert.match(invalidPage.body.message, /page/);
+  } finally {
+    sequelize.query = originalQuery;
+  }
+});

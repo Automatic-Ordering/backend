@@ -12,6 +12,9 @@ const adminAuthRoutes = require('./routes/admin-auth');
 const adminStoreRoutes = require('./routes/admin-stores');
 const productRoutes = require('./routes/products');
 const storeProductRoutes = require('./routes/store-products');
+const storeSalesRoutes = require('./routes/store-sales');
+const storeOrderRoutes = require('./routes/store-orders');
+const adminOrderRoutes = require('./routes/admin-orders');
 const { seedProducts } = require('../scripts/seed-products');
 
 const app = express();
@@ -66,6 +69,9 @@ app.use('/api/admin/auth', adminAuthRoutes);
 app.use('/api/admin/stores', adminStoreRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/store/products', storeProductRoutes);
+app.use('/api/store/sales', storeSalesRoutes);
+app.use('/api/store/orders', storeOrderRoutes);
+app.use('/api/admin/orders', adminOrderRoutes);
 
 const swaggerDefinition = {
   openapi: '3.0.3',
@@ -87,6 +93,8 @@ const swaggerDefinition = {
     { name: 'Admin Stores', description: '관리자 전용 점포 관리 API' },
     { name: 'Products', description: '본사 상품 카탈로그 API' },
     { name: 'Store Products', description: '점포 상품 및 재고 조회 API' },
+    { name: 'Store Orders', description: '점포 자동 발주 추천/확정/이력 API' },
+    { name: 'Admin Orders', description: '관리자 발주 관리 API' },
   ],
   components: {
     securitySchemes: {
