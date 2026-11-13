@@ -1,5 +1,5 @@
-const { DataTypes, Model } = require('sequelize');
-const { sequelize } = require('../config/database');
+const { DataTypes, Model } = require("sequelize");
+const { sequelize } = require("../config/database");
 
 class Product extends Model {}
 
@@ -9,12 +9,12 @@ Product.init(
       type: DataTypes.BIGINT.UNSIGNED,
       primaryKey: true,
       autoIncrement: true,
-      field: 'product_id',
+      field: "product_id",
     },
     productName: {
       type: DataTypes.STRING(255),
       allowNull: false,
-      field: 'product_name',
+      field: "product_name",
       validate: {
         notEmpty: true,
       },
@@ -34,7 +34,7 @@ Product.init(
       type: DataTypes.INTEGER.UNSIGNED,
       allowNull: false,
       defaultValue: 1,
-      field: 'lead_time_days',
+      field: "lead_time_days",
       validate: {
         min: 1,
       },
@@ -43,7 +43,7 @@ Product.init(
       type: DataTypes.INTEGER.UNSIGNED,
       allowNull: false,
       defaultValue: 1,
-      field: 'order_unit',
+      field: "order_unit",
       validate: {
         min: 1,
       },
@@ -51,8 +51,8 @@ Product.init(
   },
   {
     sequelize,
-    modelName: 'Product',
-    tableName: 'products',
+    modelName: "Product",
+    tableName: "products",
   },
 );
 

@@ -1,8 +1,8 @@
-require('dotenv').config();
+require("dotenv").config();
 
-const { Op } = require('sequelize');
-const { sequelize } = require('../config/database');
-const { Sales, Store, StoreInventory, Product } = require('../models');
+const { Op } = require("sequelize");
+const { sequelize } = require("../config/database");
+const { Sales, Store, StoreInventory, Product } = require("../models");
 
 const DAYS = 120;
 const DEFAULT_SEED = 20261113;
@@ -19,7 +19,7 @@ const createRandom = (seed) => {
   };
 };
 
-const pad = (value) => String(value).padStart(2, '0');
+const pad = (value) => String(value).padStart(2, "0");
 
 const formatLocalDate = (date) =>
   `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
@@ -40,13 +40,22 @@ const generateSaleTime = (random, day) => {
   const hour = 8 + Math.floor(random() * 15);
   const minute = Math.floor(random() * 60);
   const second = Math.floor(random() * 60);
-  return new Date(day.getFullYear(), day.getMonth(), day.getDate(), hour, minute, second);
+  return new Date(
+    day.getFullYear(),
+    day.getMonth(),
+    day.getDate(),
+    hour,
+    minute,
+    second,
+  );
 };
 
 const seedSalesHistory = async () => {
   const storeId = Number(process.env.STORE_ID);
   if (!Number.isInteger(storeId) || storeId <= 0) {
-    throw new Error('STORE_ID 환경변수에 판매 이력을 생성할 점포 ID(1 이상의 정수)를 지정해야 합니다.');
+    throw new Error(
+      "STORE_ID 환경변수에 판매 이력을 생성할 점포 ID(1 이상의 정수)를 지정해야 합니다.",
+    );
   }
 
   const seed = Number(process.env.SEED) || DEFAULT_SEED;
@@ -59,12 +68,22 @@ const seedSalesHistory = async () => {
 
   const inventories = await StoreInventory.findAll({
     where: { storeId },
-    include: [{ model: Product, as: 'product', attributes: ['productId', 'productName'] }],
+    include: [
+      {
+        model: Product,
+        as: "product",
+        attributes: ["productId", "productName"],
+      },
+    ],
   });
 
-  const registeredProducts = inventories.filter((inventory) => inventory.product);
+  const registeredProducts = inventories.filter(
+    (inventory) => inventory.product,
+  );
   if (!registeredProducts.length) {
-    throw new Error(`해당 점포에 재고가 등록된 상품이 없습니다. (store_id=${storeId})`);
+    throw new Error(
+      `해당 점포에 재고가 등록된 상품이 없습니다. (store_id=${storeId})`,
+    );
   }
 
   const today = startOfLocalDay(new Date());
@@ -84,11 +103,14 @@ const seedSalesHistory = async () => {
       storeId,
       salesDate: { [Op.gte]: rangeStart, [Op.lt]: rangeEnd },
     },
-    attributes: ['productId', 'salesDate'],
+    attributes: ["productId", "salesDate"],
   });
 
   const existingKeys = new Set(
-    existingSales.map(({ productId, salesDate }) => `${productId}:${formatLocalDate(salesDate)}`),
+    existingSales.map(
+      ({ productId, salesDate }) =>
+        `${productId}:${formatLocalDate(salesDate)}`,
+    ),
   );
 
   const rows = [];
@@ -120,18 +142,26 @@ const seedSalesHistory = async () => {
     }
   });
 
-  console.log('[Seed Sales History] 점포:', `${store.storeName} (store_id=${storeId})`);
-  console.log('[Seed Sales History] 대상 상품:', `${registeredProducts.length}개`);
   console.log(
-    '[Seed Sales History] 생성 기간:',
+    "[Seed Sales History] 점포:",
+    `${store.storeName} (store_id=${storeId})`,
+  );
+  console.log(
+    "[Seed Sales History] 대상 상품:",
+    `${registeredProducts.length}개`,
+  );
+  console.log(
+    "[Seed Sales History] 생성 기간:",
     `${formatLocalDate(rangeStart)} ~ ${formatLocalDate(dayList[dayList.length - 1])} (${DAYS}일, 오늘 제외)`,
   );
-  console.log('[Seed Sales History] 랜덤 시드:', seed);
-  console.log('========================================');
-  console.log('[Seed Sales History] 실행 완료');
+  console.log("[Seed Sales History] 랜덤 시드:", seed);
+  console.log("========================================");
+  console.log("[Seed Sales History] 실행 완료");
   console.log(`- 신규 생성: ${createdCount}건`);
-  console.log(`- 건너뜀 (동일 점포·상품·날짜 기존 기록 존재): ${skippedCount}건`);
-  console.log('========================================');
+  console.log(
+    `- 건너뜀 (동일 점포·상품·날짜 기존 기록 존재): ${skippedCount}건`,
+  );
+  console.log("========================================");
 
   return { createdCount, skippedCount };
 };
@@ -139,7 +169,7 @@ const seedSalesHistory = async () => {
 if (require.main === module) {
   seedSalesHistory()
     .catch((error) => {
-      console.error('[Seed Sales History] 실행 실패:', error.message);
+      console.error("[Seed Sales History] 실행 실패:", error.message);
       process.exitCode = 1;
     })
     .finally(async () => {

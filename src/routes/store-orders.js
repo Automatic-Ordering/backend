@@ -1,5 +1,5 @@
-const express = require('express');
-const { authenticate, requireRole } = require('../middleware/auth');
+const express = require("express");
+const { authenticate, requireRole } = require("../middleware/auth");
 const {
   getOrderRecommendations,
   getRecommendationDetail,
@@ -8,22 +8,25 @@ const {
   confirmOrders,
   serializeOrderRow,
   ORDER_STATUSES,
-} = require('../services/orderService');
-const { parsePaginationParams, buildPaginatedResponse } = require('../utils/pagination');
+} = require("../services/orderService");
+const {
+  parsePaginationParams,
+  buildPaginatedResponse,
+} = require("../utils/pagination");
 
 const router = express.Router();
 
-router.use(authenticate, requireRole('STORE'));
+router.use(authenticate, requireRole("STORE"));
 
 const isValidProductId = (value) => /^\d+$/.test(value) && Number(value) > 0;
 
 const getConfirmInputError = (body) => {
   const items = body?.items;
   if (!Array.isArray(items) || items.length === 0) {
-    return 'items는 1개 이상의 발주 항목 배열이어야 합니다.';
+    return "items는 1개 이상의 발주 항목 배열이어야 합니다.";
   }
   if (items.length > 500) {
-    return 'items는 한 번에 최대 500개까지 발주할 수 있습니다.';
+    return "items는 한 번에 최대 500개까지 발주할 수 있습니다.";
   }
   return null;
 };
@@ -97,28 +100,38 @@ const getConfirmInputError = (body) => {
  *       '401': { description: 점포 인증이 필요합니다. }
  *       '403': { description: 점포 권한이 필요합니다. }
  */
-router.get('/recommendations', async (req, res, next) => {
+router.get("/recommendations", async (req, res, next) => {
   let pagination;
   try {
     pagination = parsePaginationParams(req.query);
   } catch (error) {
     return res.status(400).json({
-      error: 'INVALID_INPUT',
+      error: "INVALID_INPUT",
       message: error.message,
     });
   }
 
   const search =
-    typeof req.query.search === 'string' && req.query.search.trim() ? req.query.search.trim() : undefined;
+    typeof req.query.search === "string" && req.query.search.trim()
+      ? req.query.search.trim()
+      : undefined;
 
   try {
-    const { recommendations, total } = await getOrderRecommendations(req.user.storeId, {
-      page: pagination.page,
-      limit: pagination.limit,
-      search,
-    });
+    const { recommendations, total } = await getOrderRecommendations(
+      req.user.storeId,
+      {
+        page: pagination.page,
+        limit: pagination.limit,
+        search,
+      },
+    );
     return res.json(
-      buildPaginatedResponse(recommendations, total, pagination.page, pagination.limit),
+      buildPaginatedResponse(
+        recommendations,
+        total,
+        pagination.page,
+        pagination.limit,
+      ),
     );
   } catch (error) {
     return next(error);
@@ -147,21 +160,26 @@ router.get('/recommendations', async (req, res, next) => {
  *       '401': { description: 점포 인증이 필요합니다. }
  *       '403': { description: 점포 권한이 필요합니다. }
  */
-router.get('/recommendations/:productId', async (req, res, next) => {
+router.get("/recommendations/:productId", async (req, res, next) => {
   const { productId } = req.params;
   if (!isValidProductId(productId)) {
     return res.status(400).json({
-      error: 'INVALID_INPUT',
-      message: 'productId는 1 이상의 정수여야 합니다.',
+      error: "INVALID_INPUT",
+      message: "productId는 1 이상의 정수여야 합니다.",
     });
   }
 
   try {
-    const detail = await getRecommendationDetail(req.user.storeId, Number(productId));
+    const detail = await getRecommendationDetail(
+      req.user.storeId,
+      Number(productId),
+    );
     return res.json(detail);
   } catch (error) {
     if (error.statusCode) {
-      return res.status(error.statusCode).json({ error: error.code, message: error.message });
+      return res
+        .status(error.statusCode)
+        .json({ error: error.code, message: error.message });
     }
     return next(error);
   }
@@ -216,10 +234,12 @@ router.get('/recommendations/:productId', async (req, res, next) => {
  *       '401': { description: 점포 인증이 필요합니다. }
  *       '403': { description: 점포 권한이 필요합니다. }
  */
-router.post('/confirm', async (req, res, next) => {
+router.post("/confirm", async (req, res, next) => {
   const inputError = getConfirmInputError(req.body);
   if (inputError) {
-    return res.status(400).json({ error: 'INVALID_INPUT', message: inputError });
+    return res
+      .status(400)
+      .json({ error: "INVALID_INPUT", message: inputError });
   }
 
   try {
@@ -237,7 +257,9 @@ router.post('/confirm', async (req, res, next) => {
     );
   } catch (error) {
     if (error.statusCode) {
-      return res.status(error.statusCode).json({ error: error.code, message: error.message });
+      return res
+        .status(error.statusCode)
+        .json({ error: error.code, message: error.message });
     }
     return next(error);
   }
@@ -298,12 +320,13 @@ router.post('/confirm', async (req, res, next) => {
  *       '401': { description: 점포 인증이 필요합니다. }
  *       '403': { description: 점포 권한이 필요합니다. }
  */
-router.get('/', async (req, res, next) => {
+router.get("/", async (req, res, next) => {
   const { status } = req.query;
   if (status !== undefined && !ORDER_STATUSES.includes(status)) {
     return res.status(400).json({
-      error: 'INVALID_INPUT',
-      message: 'status는 PENDING, ORDERED, COMPLETED, CANCELLED 중 하나여야 합니다.',
+      error: "INVALID_INPUT",
+      message:
+        "status는 PENDING, ORDERED, COMPLETED, CANCELLED 중 하나여야 합니다.",
     });
   }
 
@@ -312,7 +335,7 @@ router.get('/', async (req, res, next) => {
     pagination = parsePaginationParams(req.query);
   } catch (error) {
     return res.status(400).json({
-      error: 'INVALID_INPUT',
+      error: "INVALID_INPUT",
       message: error.message,
     });
   }
@@ -324,7 +347,12 @@ router.get('/', async (req, res, next) => {
       limit: pagination.limit,
     });
     return res.json(
-      buildPaginatedResponse(orders.map(serializeOrderRow), total, pagination.page, pagination.limit),
+      buildPaginatedResponse(
+        orders.map(serializeOrderRow),
+        total,
+        pagination.page,
+        pagination.limit,
+      ),
     );
   } catch (error) {
     return next(error);
@@ -352,12 +380,12 @@ router.get('/', async (req, res, next) => {
  *       '401': { description: 점포 인증이 필요합니다. }
  *       '403': { description: 점포 권한이 필요합니다. }
  */
-router.get('/:orderId', async (req, res, next) => {
+router.get("/:orderId", async (req, res, next) => {
   const { orderId } = req.params;
   if (!isValidProductId(orderId)) {
     return res.status(400).json({
-      error: 'INVALID_INPUT',
-      message: 'orderId는 1 이상의 정수여야 합니다.',
+      error: "INVALID_INPUT",
+      message: "orderId는 1 이상의 정수여야 합니다.",
     });
   }
 
@@ -366,7 +394,9 @@ router.get('/:orderId', async (req, res, next) => {
     return res.json(order);
   } catch (error) {
     if (error.statusCode) {
-      return res.status(error.statusCode).json({ error: error.code, message: error.message });
+      return res
+        .status(error.statusCode)
+        .json({ error: error.code, message: error.message });
     }
     return next(error);
   }

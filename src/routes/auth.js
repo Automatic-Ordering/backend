@@ -1,12 +1,13 @@
-const express = require('express');
-const jwt = require('jsonwebtoken');
-const { Store, StoreAccount } = require('../../models');
-const { hashPassword, verifyPassword } = require('../utils/password');
-const { authenticate, getJwtSecret } = require('../middleware/auth');
+const express = require("express");
+const jwt = require("jsonwebtoken");
+const { Store, StoreAccount } = require("../../models");
+const { hashPassword, verifyPassword } = require("../utils/password");
+const { authenticate, getJwtSecret } = require("../middleware/auth");
 
 const router = express.Router();
 
-const issueStoreToken = (storeId) => jwt.sign({ storeId, role: 'STORE' }, getJwtSecret(), { expiresIn: '8h' });
+const issueStoreToken = (storeId) =>
+  jwt.sign({ storeId, role: "STORE" }, getJwtSecret(), { expiresIn: "8h" });
 
 /**
  * @openapi
@@ -53,21 +54,43 @@ const issueStoreToken = (storeId) => jwt.sign({ storeId, role: 'STORE' }, getJwt
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  */
-router.post('/login', async (req, res, next) => {
+router.post("/login", async (req, res, next) => {
   const { store_code: storeCode, password } = req.body || {};
-  if (typeof storeCode !== 'string' || typeof password !== 'string' || !storeCode.trim() || !password) {
-    return res.status(400).json({ error: 'INVALID_INPUT', message: '점포 코드와 비밀번호는 필수입니다.' });
+  if (
+    typeof storeCode !== "string" ||
+    typeof password !== "string" ||
+    !storeCode.trim() ||
+    !password
+  ) {
+    return res
+      .status(400)
+      .json({
+        error: "INVALID_INPUT",
+        message: "점포 코드와 비밀번호는 필수입니다.",
+      });
   }
 
   try {
     const store = await Store.findOne({
       where: { storeCode: storeCode.trim() },
-      include: [{ model: StoreAccount, as: 'account', required: true }],
+      include: [{ model: StoreAccount, as: "account", required: true }],
     });
-    if (!store || store.status !== 'ACTIVE' || !(await verifyPassword(password, store.account.passwordHash))) {
-      return res.status(401).json({ error: 'INVALID_CREDENTIALS', message: '점포 코드 또는 비밀번호가 올바르지 않습니다.' });
+    if (
+      !store ||
+      store.status !== "ACTIVE" ||
+      !(await verifyPassword(password, store.account.passwordHash))
+    ) {
+      return res
+        .status(401)
+        .json({
+          error: "INVALID_CREDENTIALS",
+          message: "점포 코드 또는 비밀번호가 올바르지 않습니다.",
+        });
     }
-    return res.json({ token: issueStoreToken(store.storeId), token_type: 'Bearer' });
+    return res.json({
+      token: issueStoreToken(store.storeId),
+      token_type: "Bearer",
+    });
   } catch (error) {
     return next(error);
   }
@@ -122,9 +145,11 @@ router.post('/login', async (req, res, next) => {
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  */
-router.get('/me', authenticate, (req, res) => {
-  if (req.user.role !== 'STORE') {
-    return res.status(403).json({ error: 'FORBIDDEN', message: '점포 인증이 필요합니다.' });
+router.get("/me", authenticate, (req, res) => {
+  if (req.user.role !== "STORE") {
+    return res
+      .status(403)
+      .json({ error: "FORBIDDEN", message: "점포 인증이 필요합니다." });
   }
   return res.json({
     storeId: req.user.storeId,
@@ -195,25 +220,43 @@ router.get('/me', authenticate, (req, res) => {
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  */
-router.patch('/password', authenticate, async (req, res, next) => {
-  if (req.user.role !== 'STORE') {
-    return res.status(403).json({ error: 'FORBIDDEN', message: '점포 인증이 필요합니다.' });
+router.patch("/password", authenticate, async (req, res, next) => {
+  if (req.user.role !== "STORE") {
+    return res
+      .status(403)
+      .json({ error: "FORBIDDEN", message: "점포 인증이 필요합니다." });
   }
-  const { current_password: currentPassword, new_password: newPassword } = req.body || {};
-  if (typeof currentPassword !== 'string' || typeof newPassword !== 'string' || newPassword.length < 8) {
+  const { current_password: currentPassword, new_password: newPassword } =
+    req.body || {};
+  if (
+    typeof currentPassword !== "string" ||
+    typeof newPassword !== "string" ||
+    newPassword.length < 8
+  ) {
     return res.status(400).json({
-      error: 'INVALID_INPUT',
-      message: '현재 비밀번호는 필수이며 새 비밀번호는 8자 이상이어야 합니다.',
+      error: "INVALID_INPUT",
+      message: "현재 비밀번호는 필수이며 새 비밀번호는 8자 이상이어야 합니다.",
     });
   }
 
   try {
     const account = await StoreAccount.findByPk(req.user.accountId);
-    if (!account || !(await verifyPassword(currentPassword, account.passwordHash))) {
-      return res.status(401).json({ error: 'INVALID_CREDENTIALS', message: '현재 비밀번호가 올바르지 않습니다.' });
+    if (
+      !account ||
+      !(await verifyPassword(currentPassword, account.passwordHash))
+    ) {
+      return res
+        .status(401)
+        .json({
+          error: "INVALID_CREDENTIALS",
+          message: "현재 비밀번호가 올바르지 않습니다.",
+        });
     }
-    await account.update({ passwordHash: await hashPassword(newPassword), passwordChangeRequired: false });
-    return res.json({ message: '비밀번호가 성공적으로 변경되었습니다.' });
+    await account.update({
+      passwordHash: await hashPassword(newPassword),
+      passwordChangeRequired: false,
+    });
+    return res.json({ message: "비밀번호가 성공적으로 변경되었습니다." });
   } catch (error) {
     return next(error);
   }

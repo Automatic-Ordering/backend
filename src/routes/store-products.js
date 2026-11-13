@@ -1,11 +1,14 @@
-const express = require('express');
-const { sequelize } = require('../../config/database');
-const { authenticate, requireRole } = require('../middleware/auth');
-const { parsePaginationParams, buildPaginatedResponse } = require('../utils/pagination');
+const express = require("express");
+const { sequelize } = require("../../config/database");
+const { authenticate, requireRole } = require("../middleware/auth");
+const {
+  parsePaginationParams,
+  buildPaginatedResponse,
+} = require("../utils/pagination");
 
 const router = express.Router();
 
-router.use(authenticate, requireRole('STORE'));
+router.use(authenticate, requireRole("STORE"));
 
 const serializeStoreProductRow = (row) => ({
   product_id: row.product_id,
@@ -92,8 +95,9 @@ const STORE_PRODUCT_SELECT = `
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  */
-router.get('/', async (req, res, next) => {
-  const wantsPagination = req.query.page !== undefined || req.query.limit !== undefined;
+router.get("/", async (req, res, next) => {
+  const wantsPagination =
+    req.query.page !== undefined || req.query.limit !== undefined;
 
   if (wantsPagination) {
     let pagination;
@@ -101,14 +105,18 @@ router.get('/', async (req, res, next) => {
       pagination = parsePaginationParams(req.query);
     } catch (error) {
       return res.status(400).json({
-        error: 'INVALID_INPUT',
+        error: "INVALID_INPUT",
         message: error.message,
       });
     }
 
     const search =
-      typeof req.query.search === 'string' && req.query.search.trim() ? req.query.search.trim() : null;
-    const searchClause = search ? 'AND (p.product_name LIKE :search OR p.category LIKE :search)' : '';
+      typeof req.query.search === "string" && req.query.search.trim()
+        ? req.query.search.trim()
+        : null;
+    const searchClause = search
+      ? "AND (p.product_name LIKE :search OR p.category LIKE :search)"
+      : "";
     const replacements = { storeId: req.user.storeId };
     if (search) {
       replacements.search = `%${search}%`;
@@ -156,9 +164,12 @@ router.get('/', async (req, res, next) => {
   }
 
   try {
-    const [rows] = await sequelize.query(`${STORE_PRODUCT_SELECT} ORDER BY p.product_id DESC`, {
-      replacements: { storeId: req.user.storeId },
-    });
+    const [rows] = await sequelize.query(
+      `${STORE_PRODUCT_SELECT} ORDER BY p.product_id DESC`,
+      {
+        replacements: { storeId: req.user.storeId },
+      },
+    );
 
     return res.json(rows.map((row) => serializeStoreProductRow(row)));
   } catch (error) {

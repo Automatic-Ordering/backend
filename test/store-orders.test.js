@@ -1,23 +1,32 @@
-const assert = require('node:assert/strict');
-const test = require('node:test');
-const request = require('supertest');
-const { sequelize } = require('../config/database');
-const { Sales, StoreInventory, Order } = require('../models');
-const { app, adminToken, storeToken, setQueryMock } = require('./support/test-app');
+const assert = require("node:assert/strict");
+const test = require("node:test");
+const request = require("supertest");
+const { sequelize } = require("../config/database");
+const { Sales, StoreInventory, Order } = require("../models");
+const {
+  app,
+  adminToken,
+  storeToken,
+  setQueryMock,
+} = require("./support/test-app");
 
 const setStoreAuthMock = () => {
   setQueryMock(async (sql) => {
-    if (sql.includes('FROM stores s')) {
-      return [[{
-        store_id: 1,
-        store_code: '10001',
-        store_name: 'Store A',
-        status: 'ACTIVE',
-        account_id: 1,
-        password_change_required: 0,
-      }]];
+    if (sql.includes("FROM stores s")) {
+      return [
+        [
+          {
+            store_id: 1,
+            store_code: "10001",
+            store_name: "Store A",
+            status: "ACTIVE",
+            account_id: 1,
+            password_change_required: 0,
+          },
+        ],
+      ];
     }
-    if (sql.includes('FROM admins')) {
+    if (sql.includes("FROM admins")) {
       return [[{ admin_id: 1 }]];
     }
     throw new Error(`Unexpected authentication query: ${sql}`);
@@ -34,34 +43,36 @@ const mockTransaction = () => {
 
 const PRODUCT_1 = {
   productId: 1,
-  productName: '참치마요 삼각김밥',
-  category: '삼각김밥 / 샌드위치',
-  price: '1500.00',
+  productName: "참치마요 삼각김밥",
+  category: "삼각김밥 / 샌드위치",
+  price: "1500.00",
   leadTimeDays: 2,
   orderUnit: 5,
 };
 
 const PRODUCT_2 = {
   productId: 2,
-  productName: '컵라면',
-  category: '컵라면 / 봉지라면',
-  price: '1200.00',
+  productName: "컵라면",
+  category: "컵라면 / 봉지라면",
+  price: "1200.00",
   leadTimeDays: 1,
   orderUnit: 4,
 };
 
-test('store orders endpoints require store authentication', async () => {
-  const unauthorized = await request(app).get('/api/store/orders/recommendations');
+test("store orders endpoints require store authentication", async () => {
+  const unauthorized = await request(app).get(
+    "/api/store/orders/recommendations",
+  );
   assert.equal(unauthorized.status, 401);
 
   setStoreAuthMock();
   const forbidden = await request(app)
-    .get('/api/store/orders')
-    .set('Authorization', `Bearer ${adminToken()}`);
+    .get("/api/store/orders")
+    .set("Authorization", `Bearer ${adminToken()}`);
   assert.equal(forbidden.status, 403);
 });
 
-test('returns auto order recommendations with calculated values', async () => {
+test("returns auto order recommendations with calculated values", async () => {
   setStoreAuthMock();
 
   const salesFindAllCalls = [];
@@ -78,7 +89,9 @@ test('returns auto order recommendations with calculated values', async () => {
       ...Array.from({ length: 7 }, (_, i) => ({
         productId: 1,
         salesQuantity: 4,
-        salesDate: new Date(`2026-11-${String(2 + i).padStart(2, '0')}T09:00:00`),
+        salesDate: new Date(
+          `2026-11-${String(2 + i).padStart(2, "0")}T09:00:00`,
+        ),
       })),
     ];
   };
@@ -112,8 +125,8 @@ test('returns auto order recommendations with calculated values', async () => {
 
   try {
     const response = await request(app)
-      .get('/api/store/orders/recommendations?page=1&limit=20')
-      .set('Authorization', `Bearer ${storeToken()}`);
+      .get("/api/store/orders/recommendations?page=1&limit=20")
+      .set("Authorization", `Bearer ${storeToken()}`);
 
     assert.equal(response.status, 200);
     assert.equal(response.body.items.length, 2);
@@ -139,20 +152,22 @@ test('returns auto order recommendations with calculated values', async () => {
     assert.equal(second.order_quantity, 0);
     assert.equal(second.needs_order, false);
     assert.equal(second.applied_safety_stock, 5);
-    assert.equal(second.safety_stock_source, 'CONFIGURED');
-    assert.deepEqual(second.data_warning, ['NO_SALES_DATA']);
+    assert.equal(second.safety_stock_source, "CONFIGURED");
+    assert.deepEqual(second.data_warning, ["NO_SALES_DATA"]);
 
     assert.equal(salesFindAllCalls.length, 1);
     assert.equal(salesFindAllCalls[0].where.storeId, 1);
-    const inSymbol = Object.getOwnPropertySymbols(salesFindAllCalls[0].where.productId)[0];
+    const inSymbol = Object.getOwnPropertySymbols(
+      salesFindAllCalls[0].where.productId,
+    )[0];
     assert.deepEqual(salesFindAllCalls[0].where.productId[inSymbol], [1, 2]);
     assert.equal(inventoryFindAllCalls[0].limit, 20);
     assert.equal(inventoryFindAllCalls[0].offset, 0);
     assert.equal(inventoryCountCalls[0].where.storeId, 1);
 
     const invalidPage = await request(app)
-      .get('/api/store/orders/recommendations?page=0')
-      .set('Authorization', `Bearer ${storeToken()}`);
+      .get("/api/store/orders/recommendations?page=0")
+      .set("Authorization", `Bearer ${storeToken()}`);
     assert.equal(invalidPage.status, 400);
     assert.match(invalidPage.body.message, /page/);
   } finally {
@@ -163,7 +178,7 @@ test('returns auto order recommendations with calculated values', async () => {
   }
 });
 
-test('recommendations search filters products server-side', async () => {
+test("recommendations search filters products server-side", async () => {
   setStoreAuthMock();
 
   const findAllCalls = [];
@@ -186,8 +201,8 @@ test('recommendations search filters products server-side', async () => {
 
   try {
     const response = await request(app)
-      .get('/api/store/orders/recommendations?search=도시락&page=1&limit=20')
-      .set('Authorization', `Bearer ${storeToken()}`);
+      .get("/api/store/orders/recommendations?search=도시락&page=1&limit=20")
+      .set("Authorization", `Bearer ${storeToken()}`);
 
     assert.equal(response.status, 200);
     assert.deepEqual(response.body.items, []);
@@ -204,12 +219,12 @@ test('recommendations search filters products server-side', async () => {
   }
 });
 
-test('recommendation detail validates product id and ownership', async () => {
+test("recommendation detail validates product id and ownership", async () => {
   setStoreAuthMock();
 
   const badId = await request(app)
-    .get('/api/store/orders/recommendations/abc')
-    .set('Authorization', `Bearer ${storeToken()}`);
+    .get("/api/store/orders/recommendations/abc")
+    .set("Authorization", `Bearer ${storeToken()}`);
   assert.equal(badId.status, 400);
 
   const originalInventoryFindAll = StoreInventory.findAll;
@@ -222,10 +237,10 @@ test('recommendation detail validates product id and ownership', async () => {
 
   try {
     const notFound = await request(app)
-      .get('/api/store/orders/recommendations/999')
-      .set('Authorization', `Bearer ${storeToken()}`);
+      .get("/api/store/orders/recommendations/999")
+      .set("Authorization", `Bearer ${storeToken()}`);
     assert.equal(notFound.status, 404);
-    assert.equal(notFound.body.error, 'NOT_FOUND');
+    assert.equal(notFound.body.error, "NOT_FOUND");
   } finally {
     StoreInventory.findAll = originalInventoryFindAll;
     Sales.findAll = originalSalesFindAll;
@@ -233,7 +248,7 @@ test('recommendation detail validates product id and ownership', async () => {
   }
 });
 
-test('recommendation detail includes calculation basis', async () => {
+test("recommendation detail includes calculation basis", async () => {
   setStoreAuthMock();
 
   const originalInventoryFindAll = StoreInventory.findAll;
@@ -241,21 +256,27 @@ test('recommendation detail includes calculation basis', async () => {
   const originalQuery = sequelize.query;
 
   StoreInventory.findAll = async () => [
-    { storeId: 1, productId: 1, currentStock: 3, safetyStock: 0, product: PRODUCT_1 },
+    {
+      storeId: 1,
+      productId: 1,
+      currentStock: 3,
+      safetyStock: 0,
+      product: PRODUCT_1,
+    },
   ];
   Sales.findAll = async () => [
     ...Array.from({ length: 7 }, (_, i) => ({
       productId: 1,
       salesQuantity: 4,
-      salesDate: new Date(`2026-11-${String(2 + i).padStart(2, '0')}T09:00:00`),
+      salesDate: new Date(`2026-11-${String(2 + i).padStart(2, "0")}T09:00:00`),
     })),
   ];
   sequelize.query = async () => [[]];
 
   try {
     const response = await request(app)
-      .get('/api/store/orders/recommendations/1')
-      .set('Authorization', `Bearer ${storeToken()}`);
+      .get("/api/store/orders/recommendations/1")
+      .set("Authorization", `Bearer ${storeToken()}`);
 
     assert.equal(response.status, 200);
     assert.equal(response.body.calculation_basis.sales_series_days, 7);
@@ -269,7 +290,7 @@ test('recommendation detail includes calculation basis', async () => {
   }
 });
 
-test('confirm creates PENDING orders for registered products', async () => {
+test("confirm creates PENDING orders for registered products", async () => {
   setStoreAuthMock();
   const restoreTransaction = mockTransaction();
 
@@ -278,8 +299,20 @@ test('confirm creates PENDING orders for registered products', async () => {
   const originalOrderCreate = Order.create;
 
   StoreInventory.findAll = async () => [
-    { storeId: 1, productId: 1, currentStock: 3, safetyStock: 0, product: PRODUCT_1 },
-    { storeId: 1, productId: 2, currentStock: 7, safetyStock: 5, product: PRODUCT_2 },
+    {
+      storeId: 1,
+      productId: 1,
+      currentStock: 3,
+      safetyStock: 0,
+      product: PRODUCT_1,
+    },
+    {
+      storeId: 1,
+      productId: 2,
+      currentStock: 7,
+      safetyStock: 5,
+      product: PRODUCT_2,
+    },
   ];
 
   Order.create = async (values, options) => {
@@ -287,20 +320,25 @@ test('confirm creates PENDING orders for registered products', async () => {
     return {
       orderId: createCalls.length,
       ...values,
-      createdAt: '2026-11-13T00:00:00.000Z',
-      updatedAt: '2026-11-13T00:00:00.000Z',
+      createdAt: "2026-11-13T00:00:00.000Z",
+      updatedAt: "2026-11-13T00:00:00.000Z",
     };
   };
 
   try {
     const response = await request(app)
-      .post('/api/store/orders/confirm')
-      .set('Authorization', `Bearer ${storeToken()}`)
-      .send({ items: [{ product_id: 1, quantity: 10 }, { product_id: 2, quantity: 4 }] });
+      .post("/api/store/orders/confirm")
+      .set("Authorization", `Bearer ${storeToken()}`)
+      .send({
+        items: [
+          { product_id: 1, quantity: 10 },
+          { product_id: 2, quantity: 4 },
+        ],
+      });
 
     assert.equal(response.status, 201);
     assert.equal(response.body.length, 2);
-    assert.equal(response.body[0].order_status, 'PENDING');
+    assert.equal(response.body[0].order_status, "PENDING");
     assert.equal(response.body[0].order_quantity, 10);
     assert.equal(response.body[1].product_id, 2);
     assert.equal(createCalls.length, 2);
@@ -308,7 +346,7 @@ test('confirm creates PENDING orders for registered products', async () => {
       storeId: 1,
       productId: 1,
       orderQuantity: 10,
-      orderStatus: 'PENDING',
+      orderStatus: "PENDING",
     });
     assert.ok(createCalls[0].options.transaction);
   } finally {
@@ -318,48 +356,59 @@ test('confirm creates PENDING orders for registered products', async () => {
   }
 });
 
-test('confirm rejects invalid quantities and unregistered products', async () => {
+test("confirm rejects invalid quantities and unregistered products", async () => {
   setStoreAuthMock();
 
   const originalInventoryFindAll = StoreInventory.findAll;
   const originalOrderCreate = Order.create;
   StoreInventory.findAll = async () => [
-    { storeId: 1, productId: 1, currentStock: 3, safetyStock: 0, product: PRODUCT_1 },
+    {
+      storeId: 1,
+      productId: 1,
+      currentStock: 3,
+      safetyStock: 0,
+      product: PRODUCT_1,
+    },
   ];
   Order.create = async () => {
-    throw new Error('should not create orders');
+    throw new Error("should not create orders");
   };
 
   try {
     const emptyItems = await request(app)
-      .post('/api/store/orders/confirm')
-      .set('Authorization', `Bearer ${storeToken()}`)
+      .post("/api/store/orders/confirm")
+      .set("Authorization", `Bearer ${storeToken()}`)
       .send({ items: [] });
     assert.equal(emptyItems.status, 400);
 
     const zeroQuantity = await request(app)
-      .post('/api/store/orders/confirm')
-      .set('Authorization', `Bearer ${storeToken()}`)
+      .post("/api/store/orders/confirm")
+      .set("Authorization", `Bearer ${storeToken()}`)
       .send({ items: [{ product_id: 1, quantity: 0 }] });
     assert.equal(zeroQuantity.status, 400);
     assert.match(zeroQuantity.body.message, /quantity/);
 
     const negativeQuantity = await request(app)
-      .post('/api/store/orders/confirm')
-      .set('Authorization', `Bearer ${storeToken()}`)
+      .post("/api/store/orders/confirm")
+      .set("Authorization", `Bearer ${storeToken()}`)
       .send({ items: [{ product_id: 1, quantity: -5 }] });
     assert.equal(negativeQuantity.status, 400);
 
     const unregistered = await request(app)
-      .post('/api/store/orders/confirm')
-      .set('Authorization', `Bearer ${storeToken()}`)
+      .post("/api/store/orders/confirm")
+      .set("Authorization", `Bearer ${storeToken()}`)
       .send({ items: [{ product_id: 999, quantity: 1 }] });
     assert.equal(unregistered.status, 404);
 
     const duplicate = await request(app)
-      .post('/api/store/orders/confirm')
-      .set('Authorization', `Bearer ${storeToken()}`)
-      .send({ items: [{ product_id: 1, quantity: 1 }, { product_id: 1, quantity: 2 }] });
+      .post("/api/store/orders/confirm")
+      .set("Authorization", `Bearer ${storeToken()}`)
+      .send({
+        items: [
+          { product_id: 1, quantity: 1 },
+          { product_id: 1, quantity: 2 },
+        ],
+      });
     assert.equal(duplicate.status, 400);
     assert.match(duplicate.body.message, /중복/);
   } finally {
@@ -368,7 +417,7 @@ test('confirm rejects invalid quantities and unregistered products', async () =>
   }
 });
 
-test('order history is paginated and scoped to the authenticated store', async () => {
+test("order history is paginated and scoped to the authenticated store", async () => {
   setStoreAuthMock();
 
   const findAllCalls = [];
@@ -383,9 +432,9 @@ test('order history is paginated and scoped to the authenticated store', async (
         storeId: 1,
         productId: 1,
         orderQuantity: 10,
-        orderStatus: 'PENDING',
-        createdAt: '2026-11-13T00:00:00.000Z',
-        updatedAt: '2026-11-13T00:00:00.000Z',
+        orderStatus: "PENDING",
+        createdAt: "2026-11-13T00:00:00.000Z",
+        updatedAt: "2026-11-13T00:00:00.000Z",
         product: PRODUCT_1,
       },
     ];
@@ -397,13 +446,13 @@ test('order history is paginated and scoped to the authenticated store', async (
 
   try {
     const response = await request(app)
-      .get('/api/store/orders')
-      .set('Authorization', `Bearer ${storeToken()}`);
+      .get("/api/store/orders")
+      .set("Authorization", `Bearer ${storeToken()}`);
     assert.equal(response.status, 200);
     assert.equal(response.body.items.length, 1);
     assert.equal(response.body.items[0].order_id, 1);
-    assert.equal(response.body.items[0].product_name, '참치마요 삼각김밥');
-    assert.equal(response.body.items[0].order_status, 'PENDING');
+    assert.equal(response.body.items[0].product_name, "참치마요 삼각김밥");
+    assert.equal(response.body.items[0].order_status, "PENDING");
     assert.equal(response.body.total, 1);
     assert.equal(response.body.page, 1);
     assert.equal(response.body.limit, 20);
@@ -414,34 +463,34 @@ test('order history is paginated and scoped to the authenticated store', async (
     assert.equal(countCalls[0].where.storeId, 1);
 
     const filtered = await request(app)
-      .get('/api/store/orders?status=ORDERED')
-      .set('Authorization', `Bearer ${storeToken()}`);
+      .get("/api/store/orders?status=ORDERED")
+      .set("Authorization", `Bearer ${storeToken()}`);
     assert.equal(filtered.status, 200);
-    assert.equal(findAllCalls[1].where.orderStatus, 'ORDERED');
-    assert.equal(countCalls[1].where.orderStatus, 'ORDERED');
+    assert.equal(findAllCalls[1].where.orderStatus, "ORDERED");
+    assert.equal(countCalls[1].where.orderStatus, "ORDERED");
 
     const paged = await request(app)
-      .get('/api/store/orders?page=2&limit=1')
-      .set('Authorization', `Bearer ${storeToken()}`);
+      .get("/api/store/orders?page=2&limit=1")
+      .set("Authorization", `Bearer ${storeToken()}`);
     assert.equal(paged.status, 200);
     assert.equal(findAllCalls[2].limit, 1);
     assert.equal(findAllCalls[2].offset, 1);
     assert.equal(paged.body.page, 2);
 
     const invalidStatus = await request(app)
-      .get('/api/store/orders?status=WRONG')
-      .set('Authorization', `Bearer ${storeToken()}`);
+      .get("/api/store/orders?status=WRONG")
+      .set("Authorization", `Bearer ${storeToken()}`);
     assert.equal(invalidStatus.status, 400);
 
     const invalidPage = await request(app)
-      .get('/api/store/orders?page=0')
-      .set('Authorization', `Bearer ${storeToken()}`);
+      .get("/api/store/orders?page=0")
+      .set("Authorization", `Bearer ${storeToken()}`);
     assert.equal(invalidPage.status, 400);
     assert.match(invalidPage.body.message, /page/);
 
     const invalidLimit = await request(app)
-      .get('/api/store/orders?limit=999')
-      .set('Authorization', `Bearer ${storeToken()}`);
+      .get("/api/store/orders?limit=999")
+      .set("Authorization", `Bearer ${storeToken()}`);
     assert.equal(invalidLimit.status, 400);
     assert.match(invalidLimit.body.message, /limit/);
   } finally {
@@ -450,7 +499,7 @@ test('order history is paginated and scoped to the authenticated store', async (
   }
 });
 
-test('order detail blocks access to other stores orders', async () => {
+test("order detail blocks access to other stores orders", async () => {
   setStoreAuthMock();
 
   const findOneCalls = [];
@@ -462,8 +511,8 @@ test('order detail blocks access to other stores orders', async () => {
 
   try {
     const response = await request(app)
-      .get('/api/store/orders/77')
-      .set('Authorization', `Bearer ${storeToken()}`);
+      .get("/api/store/orders/77")
+      .set("Authorization", `Bearer ${storeToken()}`);
 
     assert.equal(response.status, 404);
     assert.equal(findOneCalls[0].where.storeId, 1);

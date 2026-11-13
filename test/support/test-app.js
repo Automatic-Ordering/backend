@@ -1,15 +1,21 @@
-const jwt = require('jsonwebtoken');
-const { app } = require('../../src/app');
-const { sequelize } = require('../../config/database');
-const { Admin, Store, StoreAccount, Product, StoreInventory } = require('../../models');
+const jwt = require("jsonwebtoken");
+const { app } = require("../../src/app");
+const { sequelize } = require("../../config/database");
+const {
+  Admin,
+  Store,
+  StoreAccount,
+  Product,
+  StoreInventory,
+} = require("../../models");
 
 // ------------------------------------------------------------
 // Tokens
 // ------------------------------------------------------------
 const adminToken = () =>
-  jwt.sign({ adminId: 1, role: 'ADMIN' }, process.env.JWT_SECRET);
+  jwt.sign({ adminId: 1, role: "ADMIN" }, process.env.JWT_SECRET);
 const storeToken = () =>
-  jwt.sign({ storeId: 1, role: 'STORE' }, process.env.JWT_SECRET);
+  jwt.sign({ storeId: 1, role: "STORE" }, process.env.JWT_SECRET);
 
 // ------------------------------------------------------------
 // Query mock (used by model mocks)
@@ -69,20 +75,24 @@ const getCapturedStoreAccountUpdate = () => capturedStoreAccountUpdate;
 // ------------------------------------------------------------
 Admin.findOne = async () => {
   const [rows] = await queryMock(
-    'SELECT admin_id, password_hash FROM admins WHERE admin_username = ?'
+    "SELECT admin_id, password_hash FROM admins WHERE admin_username = ?",
   );
   const row = rows?.[0];
-  return row ? { adminId: row.admin_id, passwordHash: row.password_hash } : null;
+  return row
+    ? { adminId: row.admin_id, passwordHash: row.password_hash }
+    : null;
 };
 
 Admin.findByPk = async () => {
-  const [rows] = await queryMock('SELECT admin_id FROM admins WHERE admin_id = ?');
+  const [rows] = await queryMock(
+    "SELECT admin_id FROM admins WHERE admin_id = ?",
+  );
   return rows?.[0] || null;
 };
 
 Store.findOne = async () => {
   const [rows] = await queryMock(
-    'SELECT s.store_id, s.status, a.password_hash FROM stores s WHERE s.store_code = ?'
+    "SELECT s.store_id, s.status, a.password_hash FROM stores s WHERE s.store_code = ?",
   );
   const row = rows?.[0];
   return row ? toStore(row) : null;
@@ -90,14 +100,14 @@ Store.findOne = async () => {
 
 Store.findByPk = async () => {
   const [rows] = await queryMock(
-    'SELECT store_id, store_name, store_code, status FROM stores s'
+    "SELECT store_id, store_name, store_code, status FROM stores s",
   );
   return toStore(rows?.[0]);
 };
 
 Store.findAll = async () => {
   const [rows] = await queryMock(
-    'SELECT store_id, store_name, store_code, status, created_at FROM stores'
+    "SELECT store_id, store_name, store_code, status, created_at FROM stores",
   );
   return (rows || []).map(toStore);
 };
@@ -105,22 +115,24 @@ Store.findAll = async () => {
 Store.create = async (values, { transaction }) => {
   capturedStoreCreateTx = transaction;
   const [result] = await transaction.query(
-    'INSERT INTO stores (store_name, store_code, status) VALUES (?, ?, ?)'
+    "INSERT INTO stores (store_name, store_code, status) VALUES (?, ?, ?)",
   );
   return toStore({ store_id: result.insertId, ...values });
 };
 
 StoreAccount.findByPk = async () => {
   const [rows] = await queryMock(
-    'SELECT password_hash FROM store_accounts WHERE account_id = ?'
+    "SELECT password_hash FROM store_accounts WHERE account_id = ?",
   );
   const row = rows?.[0];
-  return row ? { passwordHash: row.password_hash, update: async () => {} } : null;
+  return row
+    ? { passwordHash: row.password_hash, update: async () => {} }
+    : null;
 };
 
 StoreAccount.findOne = async () => {
   const [rows] = await queryMock(
-    'SELECT account_id, store_id, password_hash, password_change_required FROM store_accounts WHERE store_id = ?'
+    "SELECT account_id, store_id, password_hash, password_change_required FROM store_accounts WHERE store_id = ?",
   );
   return toStoreAccount(rows?.[0]);
 };
@@ -128,28 +140,29 @@ StoreAccount.findOne = async () => {
 StoreAccount.create = async (values, { transaction }) => {
   capturedStoreAccountCreateTx = transaction;
   await transaction.query(
-    'INSERT INTO store_accounts (store_id, password_hash, password_change_required) VALUES (?, ?, TRUE)'
+    "INSERT INTO store_accounts (store_id, password_hash, password_change_required) VALUES (?, ?, TRUE)",
   );
   return values;
 };
 
 Product.findAll = async () => {
-  const [rows] = await queryMock('SELECT product_id, category FROM products');
+  const [rows] = await queryMock("SELECT product_id, category FROM products");
   return rows || [];
 };
 
 // StoreInventory bulkCreate mock
 if (!StoreInventory) {
-  throw new Error('StoreInventory model is not exported from models/index.js');
+  throw new Error("StoreInventory model is not exported from models/index.js");
 }
 StoreInventory.bulkCreate = async (rows, { transaction }) => {
-  if (!transaction) throw new Error('Transaction missing for StoreInventory.bulkCreate');
+  if (!transaction)
+    throw new Error("Transaction missing for StoreInventory.bulkCreate");
   capturedBulkRows = rows;
   capturedBulkTx = transaction;
   bulkCreateCallCount += 1;
   if (forceBulkError) {
-    const err = new Error('Forced bulk error');
-    err.name = 'SequelizeDatabaseError';
+    const err = new Error("Forced bulk error");
+    err.name = "SequelizeDatabaseError";
     throw err;
   }
   return rows;
@@ -182,11 +195,13 @@ const toStoreAccount = (row) => {
     accountId: row.account_id ?? row.accountId,
     storeId: row.store_id ?? row.storeId,
     passwordHash: row.password_hash ?? row.passwordHash,
-    passwordChangeRequired: Boolean(row.password_change_required ?? row.passwordChangeRequired),
+    passwordChangeRequired: Boolean(
+      row.password_change_required ?? row.passwordChangeRequired,
+    ),
     update: async (values) => {
       capturedStoreAccountUpdate = values;
       await queryMock(
-        `UPDATE store_accounts SET ${Object.keys(values).join(', ')} WHERE store_id = ?`
+        `UPDATE store_accounts SET ${Object.keys(values).join(", ")} WHERE store_id = ?`,
       );
       Object.assign(account, values);
     },
@@ -212,7 +227,9 @@ const toStore = (row) => {
           }
         : undefined,
     update: async (values) => {
-      await queryMock(`UPDATE stores SET ${Object.keys(values).join(', ')} WHERE store_id = ?`);
+      await queryMock(
+        `UPDATE stores SET ${Object.keys(values).join(", ")} WHERE store_id = ?`,
+      );
       Object.assign(store, values);
     },
   };

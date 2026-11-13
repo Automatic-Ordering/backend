@@ -1,29 +1,36 @@
-const express = require('express');
-const { authenticate, requireRole } = require('../middleware/auth');
-const { registerSale, getSalesHistory } = require('../services/salesService');
-const { parsePaginationParams, buildPaginatedResponse } = require('../utils/pagination');
+const express = require("express");
+const { authenticate, requireRole } = require("../middleware/auth");
+const { registerSale, getSalesHistory } = require("../services/salesService");
+const {
+  parsePaginationParams,
+  buildPaginatedResponse,
+} = require("../utils/pagination");
 
 const router = express.Router();
 
-router.use(authenticate, requireRole('STORE'));
+router.use(authenticate, requireRole("STORE"));
 
-const getValidationError = ({ product_id: productId, sales_quantity: salesQuantity, sales_date: salesDate }) => {
+const getValidationError = ({
+  product_id: productId,
+  sales_quantity: salesQuantity,
+  sales_date: salesDate,
+}) => {
   const parsedProductId = Number(productId);
   if (!Number.isInteger(parsedProductId) || parsedProductId <= 0) {
-    return 'product_id는 1 이상의 정수여야 합니다.';
+    return "product_id는 1 이상의 정수여야 합니다.";
   }
 
   const parsedQuantity = Number(salesQuantity);
   if (!Number.isInteger(parsedQuantity) || parsedQuantity < 1) {
-    return 'sales_quantity는 1 이상의 정수여야 합니다.';
+    return "sales_quantity는 1 이상의 정수여야 합니다.";
   }
 
   if (
-    typeof salesDate !== 'string' ||
+    typeof salesDate !== "string" ||
     !salesDate.trim() ||
     Number.isNaN(new Date(salesDate).getTime())
   ) {
-    return 'sales_date는 유효한 날짜 문자열이어야 합니다.';
+    return "sales_date는 유효한 날짜 문자열이어야 합니다.";
   }
 
   return null;
@@ -131,13 +138,13 @@ const serializeSale = (sale, remainingStock) => ({
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  */
-router.post('/', async (req, res, next) => {
+router.post("/", async (req, res, next) => {
   const body = req.body || {};
 
   const validationMessage = getValidationError(body);
   if (validationMessage) {
     return res.status(400).json({
-      error: 'INVALID_INPUT',
+      error: "INVALID_INPUT",
       message: validationMessage,
     });
   }
@@ -145,8 +152,8 @@ router.post('/', async (req, res, next) => {
   const salesDate = new Date(body.sales_date);
   if (salesDate.getTime() > Date.now()) {
     return res.status(400).json({
-      error: 'INVALID_INPUT',
-      message: 'sales_date는 미래 시각일 수 없습니다.',
+      error: "INVALID_INPUT",
+      message: "sales_date는 미래 시각일 수 없습니다.",
     });
   }
 
@@ -171,7 +178,7 @@ router.post('/', async (req, res, next) => {
 });
 
 const isValidDateParam = (value) =>
-  typeof value === 'string' &&
+  typeof value === "string" &&
   /^\d{4}-\d{2}-\d{2}$/.test(value) &&
   !Number.isNaN(new Date(`${value}T00:00:00`).getTime());
 
@@ -270,27 +277,27 @@ const serializeSaleRow = (sale) => ({
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  */
-router.get('/', async (req, res, next) => {
+router.get("/", async (req, res, next) => {
   const { from, to } = req.query;
 
   if (from !== undefined && !isValidDateParam(from)) {
     return res.status(400).json({
-      error: 'INVALID_INPUT',
-      message: 'from 날짜는 YYYY-MM-DD 형식이어야 합니다.',
+      error: "INVALID_INPUT",
+      message: "from 날짜는 YYYY-MM-DD 형식이어야 합니다.",
     });
   }
 
   if (to !== undefined && !isValidDateParam(to)) {
     return res.status(400).json({
-      error: 'INVALID_INPUT',
-      message: 'to 날짜는 YYYY-MM-DD 형식이어야 합니다.',
+      error: "INVALID_INPUT",
+      message: "to 날짜는 YYYY-MM-DD 형식이어야 합니다.",
     });
   }
 
   if (from !== undefined && to !== undefined && from > to) {
     return res.status(400).json({
-      error: 'INVALID_INPUT',
-      message: 'from 날짜는 to 날짜보다 이후일 수 없습니다.',
+      error: "INVALID_INPUT",
+      message: "from 날짜는 to 날짜보다 이후일 수 없습니다.",
     });
   }
 
@@ -299,7 +306,7 @@ router.get('/', async (req, res, next) => {
     pagination = parsePaginationParams(req.query);
   } catch (error) {
     return res.status(400).json({
-      error: 'INVALID_INPUT',
+      error: "INVALID_INPUT",
       message: error.message,
     });
   }
@@ -314,7 +321,12 @@ router.get('/', async (req, res, next) => {
     });
 
     return res.json(
-      buildPaginatedResponse(sales.map(serializeSaleRow), total, pagination.page, pagination.limit),
+      buildPaginatedResponse(
+        sales.map(serializeSaleRow),
+        total,
+        pagination.page,
+        pagination.limit,
+      ),
     );
   } catch (error) {
     return next(error);

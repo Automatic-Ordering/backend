@@ -1,27 +1,30 @@
-const express = require('express');
+const express = require("express");
 const {
   ForeignKeyConstraintError,
   UniqueConstraintError,
   ValidationError,
-} = require('sequelize');
-const { sequelize } = require('../../config/database');
+} = require("sequelize");
+const { sequelize } = require("../../config/database");
 const {
   Store,
   StoreAccount,
   Inventory,
   Sales,
   Order,
-} = require('../../models');
-const { hashPassword, generateTemporaryPassword } = require('../utils/password');
-const { generateStoreCode } = require('../utils/store-code');
-const { Product } = require('../../models');
-const { StoreInventory } = require('../../models');
-const { getSafetyStock } = require('../utils/inventoryPolicy');
-const { authenticate, requireRole } = require('../middleware/auth');
+} = require("../../models");
+const {
+  hashPassword,
+  generateTemporaryPassword,
+} = require("../utils/password");
+const { generateStoreCode } = require("../utils/store-code");
+const { Product } = require("../../models");
+const { StoreInventory } = require("../../models");
+const { getSafetyStock } = require("../utils/inventoryPolicy");
+const { authenticate, requireRole } = require("../middleware/auth");
 
 const router = express.Router();
 
-router.use(authenticate, requireRole('ADMIN'));
+router.use(authenticate, requireRole("ADMIN"));
 
 const serializeStore = (store) => ({
   store_id: store.storeId,
@@ -32,7 +35,8 @@ const serializeStore = (store) => ({
   updated_at: store.updatedAt,
 });
 
-const isValidStoreId = (storeId) => /^\d+$/.test(storeId) && Number(storeId) > 0;
+const isValidStoreId = (storeId) =>
+  /^\d+$/.test(storeId) && Number(storeId) > 0;
 
 const getStoreInputError = (body, { isCreate = false } = {}) => {
   const hasStoreCode = body.store_code !== undefined;
@@ -40,25 +44,38 @@ const getStoreInputError = (body, { isCreate = false } = {}) => {
   const hasPassword = body.password !== undefined;
 
   if (isCreate) {
-    if (!hasStoreName || typeof body.store_name !== 'string' || !body.store_name.trim()) {
-      return '점포명은 비어 있지 않은 문자열이어야 합니다.';
+    if (
+      !hasStoreName ||
+      typeof body.store_name !== "string" ||
+      !body.store_name.trim()
+    ) {
+      return "점포명은 비어 있지 않은 문자열이어야 합니다.";
     }
   }
 
-  if (hasStoreCode && (typeof body.store_code !== 'string' || !body.store_code.trim())) {
-    return '점포 코드는 비어 있지 않은 문자열이어야 합니다.';
+  if (
+    hasStoreCode &&
+    (typeof body.store_code !== "string" || !body.store_code.trim())
+  ) {
+    return "점포 코드는 비어 있지 않은 문자열이어야 합니다.";
   }
 
-  if (hasStoreName && (typeof body.store_name !== 'string' || !body.store_name.trim())) {
-    return '점포명은 비어 있지 않은 문자열이어야 합니다.';
+  if (
+    hasStoreName &&
+    (typeof body.store_name !== "string" || !body.store_name.trim())
+  ) {
+    return "점포명은 비어 있지 않은 문자열이어야 합니다.";
   }
 
-  if (hasPassword && (typeof body.password !== 'string' || body.password.length < 8)) {
-    return '비밀번호는 8자 이상이어야 합니다.';
+  if (
+    hasPassword &&
+    (typeof body.password !== "string" || body.password.length < 8)
+  ) {
+    return "비밀번호는 8자 이상이어야 합니다.";
   }
 
   if (hasStoreCode && body.store_code.trim().length > 32) {
-    return '점포 코드는 32자 이하여야 합니다.';
+    return "점포 코드는 32자 이하여야 합니다.";
   }
 
   return null;
@@ -76,28 +93,28 @@ const findUniqueStoreCode = async (transaction) => {
       return candidate;
     }
   }
-  throw new Error('점포 코드 자동 생성에 실패했습니다. 다시 시도해주세요.');
+  throw new Error("점포 코드 자동 생성에 실패했습니다. 다시 시도해주세요.");
 };
 
 const handleSequelizeError = (error, res, next) => {
   if (error instanceof UniqueConstraintError) {
     return res.status(409).json({
-      error: 'DUPLICATE_STORE_CODE',
-      message: '점포 코드가 이미 사용 중입니다.',
+      error: "DUPLICATE_STORE_CODE",
+      message: "점포 코드가 이미 사용 중입니다.",
     });
   }
 
   if (error instanceof ValidationError) {
     return res.status(400).json({
-      error: 'INVALID_INPUT',
-      message: error.errors.map(({ message }) => message).join(', '),
+      error: "INVALID_INPUT",
+      message: error.errors.map(({ message }) => message).join(", "),
     });
   }
 
   if (error instanceof ForeignKeyConstraintError) {
     return res.status(409).json({
-      error: 'CONFLICT',
-      message: '해당 점포가 다른 데이터에서 참조되고 있습니다.',
+      error: "CONFLICT",
+      message: "해당 점포가 다른 데이터에서 참조되고 있습니다.",
     });
   }
 
@@ -169,18 +186,19 @@ const handleSequelizeError = (error, res, next) => {
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  */
-router.post('/', async (req, res, next) => {
+router.post("/", async (req, res, next) => {
   const inputError = getStoreInputError(req.body || {}, { isCreate: true });
   if (inputError) {
     return res.status(400).json({
-      error: 'INVALID_INPUT',
+      error: "INVALID_INPUT",
       message: inputError,
     });
   }
 
-  const rawStoreCode = typeof req.body?.store_code === 'string' && req.body.store_code.trim()
-    ? req.body.store_code.trim()
-    : null;
+  const rawStoreCode =
+    typeof req.body?.store_code === "string" && req.body.store_code.trim()
+      ? req.body.store_code.trim()
+      : null;
   const storeName = req.body.store_name.trim();
 
   const maxAttempts = rawStoreCode ? 1 : 5;
@@ -189,9 +207,10 @@ router.post('/', async (req, res, next) => {
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     try {
       const storeCode = rawStoreCode || (await findUniqueStoreCode());
-      const password = typeof req.body?.password === 'string' && req.body.password
-        ? req.body.password
-        : generateTemporaryPassword(storeCode);
+      const password =
+        typeof req.body?.password === "string" && req.body.password
+          ? req.body.password
+          : generateTemporaryPassword(storeCode);
 
       const store = await sequelize.transaction(async (transaction) => {
         // ① 점포 레코드 생성
@@ -199,7 +218,7 @@ router.post('/', async (req, res, next) => {
           {
             storeCode,
             storeName,
-            status: 'ACTIVE',
+            status: "ACTIVE",
           },
           { transaction },
         );
@@ -216,12 +235,12 @@ router.post('/', async (req, res, next) => {
 
         // ③ 전체 상품 조회 (productId + category)
         const products = await Product.findAll({
-          attributes: ['productId', 'category'],
+          attributes: ["productId", "category"],
           transaction,
         });
 
         // ④ 재고 행 준비 (current_stock=0, safety_stock=policy)
-        const inventoryRows = products.map(p => ({
+        const inventoryRows = products.map((p) => ({
           storeId: createdStore.storeId,
           productId: p.productId,
           currentStock: 0,
@@ -229,11 +248,12 @@ router.post('/', async (req, res, next) => {
         }));
 
         // ⑤ bulkCreate – 중복 방지를 위해 예외 처리
-        await StoreInventory.bulkCreate(inventoryRows, { transaction })
-          .catch(err => {
-            if (err.name !== 'SequelizeUniqueConstraintError') throw err;
+        await StoreInventory.bulkCreate(inventoryRows, { transaction }).catch(
+          (err) => {
+            if (err.name !== "SequelizeUniqueConstraintError") throw err;
             // 중복이면 무시 (이미 존재)
-          });
+          },
+        );
 
         // ⑥ 최종적으로 생성된 Store 레코드 반환
         return createdStore;
@@ -247,7 +267,11 @@ router.post('/', async (req, res, next) => {
       return res.status(201).json(responsePayload);
     } catch (error) {
       lastError = error;
-      if (error instanceof UniqueConstraintError && !rawStoreCode && attempt < maxAttempts - 1) {
+      if (
+        error instanceof UniqueConstraintError &&
+        !rawStoreCode &&
+        attempt < maxAttempts - 1
+      ) {
         continue;
       }
       return handleSequelizeError(error, res, next);
@@ -289,10 +313,10 @@ router.post('/', async (req, res, next) => {
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  */
-router.get('/', async (req, res, next) => {
+router.get("/", async (req, res, next) => {
   try {
     const stores = await Store.findAll({
-      order: [['storeId', 'DESC']],
+      order: [["storeId", "DESC"]],
     });
 
     return res.json(stores.map(serializeStore));
@@ -344,11 +368,11 @@ router.get('/', async (req, res, next) => {
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  */
-router.get('/:id', async (req, res, next) => {
+router.get("/:id", async (req, res, next) => {
   if (!isValidStoreId(req.params.id)) {
     return res.status(404).json({
-      error: 'NOT_FOUND',
-      message: '점포를 찾을 수 없습니다.',
+      error: "NOT_FOUND",
+      message: "점포를 찾을 수 없습니다.",
     });
   }
 
@@ -356,8 +380,8 @@ router.get('/:id', async (req, res, next) => {
     const store = await Store.findByPk(req.params.id);
     if (!store) {
       return res.status(404).json({
-        error: 'NOT_FOUND',
-        message: '점포를 찾을 수 없습니다.',
+        error: "NOT_FOUND",
+        message: "점포를 찾을 수 없습니다.",
       });
     }
 
@@ -437,37 +461,39 @@ router.get('/:id', async (req, res, next) => {
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  */
-router.patch('/:id', async (req, res, next) => {
+router.patch("/:id", async (req, res, next) => {
   if (!isValidStoreId(req.params.id)) {
     return res.status(404).json({
-      error: 'NOT_FOUND',
-      message: '점포를 찾을 수 없습니다.',
+      error: "NOT_FOUND",
+      message: "점포를 찾을 수 없습니다.",
     });
   }
 
   if (req.body?.password !== undefined) {
     return res.status(400).json({
-      error: 'INVALID_INPUT',
-      message: '비밀번호는 비밀번호 변경 API를 통해 변경해야 합니다.',
+      error: "INVALID_INPUT",
+      message: "비밀번호는 비밀번호 변경 API를 통해 변경해야 합니다.",
     });
   }
 
   const inputError = getStoreInputError(req.body || {});
   if (inputError) {
     return res.status(400).json({
-      error: 'INVALID_INPUT',
+      error: "INVALID_INPUT",
       message: inputError,
     });
   }
 
   const updates = {};
-  if (req.body.store_code !== undefined) updates.storeCode = req.body.store_code.trim();
-  if (req.body.store_name !== undefined) updates.storeName = req.body.store_name.trim();
+  if (req.body.store_code !== undefined)
+    updates.storeCode = req.body.store_code.trim();
+  if (req.body.store_name !== undefined)
+    updates.storeName = req.body.store_name.trim();
 
   if (Object.keys(updates).length === 0) {
     return res.status(400).json({
-      error: 'INVALID_INPUT',
-      message: '점포 코드 또는 점포명은 필수입니다.',
+      error: "INVALID_INPUT",
+      message: "점포 코드 또는 점포명은 필수입니다.",
     });
   }
 
@@ -475,8 +501,8 @@ router.patch('/:id', async (req, res, next) => {
     const store = await Store.findByPk(req.params.id);
     if (!store) {
       return res.status(404).json({
-        error: 'NOT_FOUND',
-        message: '점포를 찾을 수 없습니다.',
+        error: "NOT_FOUND",
+        message: "점포를 찾을 수 없습니다.",
       });
     }
 
@@ -549,19 +575,19 @@ router.patch('/:id', async (req, res, next) => {
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  */
-router.patch('/:id/status', async (req, res, next) => {
+router.patch("/:id/status", async (req, res, next) => {
   if (!isValidStoreId(req.params.id)) {
     return res.status(404).json({
-      error: 'NOT_FOUND',
-      message: '점포를 찾을 수 없습니다.',
+      error: "NOT_FOUND",
+      message: "점포를 찾을 수 없습니다.",
     });
   }
 
   const { status } = req.body || {};
-  if (!['ACTIVE', 'SUSPENDED'].includes(status)) {
+  if (!["ACTIVE", "SUSPENDED"].includes(status)) {
     return res.status(400).json({
-      error: 'INVALID_INPUT',
-      message: '점포 상태는 ACTIVE 또는 SUSPENDED여야 합니다.',
+      error: "INVALID_INPUT",
+      message: "점포 상태는 ACTIVE 또는 SUSPENDED여야 합니다.",
     });
   }
 
@@ -569,8 +595,8 @@ router.patch('/:id/status', async (req, res, next) => {
     const store = await Store.findByPk(req.params.id);
     if (!store) {
       return res.status(404).json({
-        error: 'NOT_FOUND',
-        message: '점포를 찾을 수 없습니다.',
+        error: "NOT_FOUND",
+        message: "점포를 찾을 수 없습니다.",
       });
     }
 
@@ -632,11 +658,11 @@ router.patch('/:id/status', async (req, res, next) => {
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  */
-router.delete('/:id', async (req, res, next) => {
+router.delete("/:id", async (req, res, next) => {
   if (!isValidStoreId(req.params.id)) {
     return res.status(404).json({
-      error: 'NOT_FOUND',
-      message: '점포를 찾을 수 없습니다.',
+      error: "NOT_FOUND",
+      message: "점포를 찾을 수 없습니다.",
     });
   }
 
@@ -644,23 +670,29 @@ router.delete('/:id', async (req, res, next) => {
     const store = await Store.findByPk(req.params.id);
     if (!store) {
       return res.status(404).json({
-        error: 'NOT_FOUND',
-        message: '점포를 찾을 수 없습니다.',
+        error: "NOT_FOUND",
+        message: "점포를 찾을 수 없습니다.",
       });
     }
 
-    if (store.status !== 'SUSPENDED') {
+    if (store.status !== "SUSPENDED") {
       return res.status(400).json({
-        error: 'INVALID_STATUS',
-        message: '이용 정지된 점포만 폐점 처리할 수 있습니다.',
+        error: "INVALID_STATUS",
+        message: "이용 정지된 점포만 폐점 처리할 수 있습니다.",
       });
     }
 
     await sequelize.transaction(async (transaction) => {
-      await Inventory.destroy({ where: { storeId: store.storeId }, transaction });
+      await Inventory.destroy({
+        where: { storeId: store.storeId },
+        transaction,
+      });
       await Sales.destroy({ where: { storeId: store.storeId }, transaction });
       await Order.destroy({ where: { storeId: store.storeId }, transaction });
-      await StoreAccount.destroy({ where: { storeId: store.storeId }, transaction });
+      await StoreAccount.destroy({
+        where: { storeId: store.storeId },
+        transaction,
+      });
       await store.destroy({ transaction });
     });
 
@@ -715,11 +747,11 @@ router.delete('/:id', async (req, res, next) => {
  *       '403':
  *         description: 관리자 권한 필요
  */
-router.patch('/:id/password/reset', async (req, res, next) => {
+router.patch("/:id/password/reset", async (req, res, next) => {
   if (!isValidStoreId(req.params.id)) {
     return res.status(404).json({
-      error: 'NOT_FOUND',
-      message: '점포를 찾을 수 없습니다.',
+      error: "NOT_FOUND",
+      message: "점포를 찾을 수 없습니다.",
     });
   }
 
@@ -727,16 +759,18 @@ router.patch('/:id/password/reset', async (req, res, next) => {
     const store = await Store.findByPk(req.params.id);
     if (!store) {
       return res.status(404).json({
-        error: 'NOT_FOUND',
-        message: '점포를 찾을 수 없습니다.',
+        error: "NOT_FOUND",
+        message: "점포를 찾을 수 없습니다.",
       });
     }
 
-    const account = await StoreAccount.findOne({ where: { storeId: store.storeId } });
+    const account = await StoreAccount.findOne({
+      where: { storeId: store.storeId },
+    });
     if (!account) {
       return res.status(404).json({
-        error: 'NOT_FOUND',
-        message: '점포 계정을 찾을 수 없습니다.',
+        error: "NOT_FOUND",
+        message: "점포 계정을 찾을 수 없습니다.",
       });
     }
 
@@ -748,7 +782,7 @@ router.patch('/:id/password/reset', async (req, res, next) => {
 
     return res.json({
       success: true,
-      message: '점포 비밀번호가 초기화되었습니다.',
+      message: "점포 비밀번호가 초기화되었습니다.",
       data: { temporaryPassword },
     });
   } catch (error) {

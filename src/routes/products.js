@@ -1,8 +1,7 @@
-const express = require('express');
-const { Product } = require('../../models');
-const { ForeignKeyConstraintError, ValidationError } = require('sequelize');
-const { authenticate, requireRole } = require('../middleware/auth');
-
+const express = require("express");
+const { Product } = require("../../models");
+const { ForeignKeyConstraintError, ValidationError } = require("sequelize");
+const { authenticate, requireRole } = require("../middleware/auth");
 
 const router = express.Router();
 
@@ -15,18 +14,22 @@ const serializeProduct = (product) => ({
   updated_at: product.updatedAt,
 });
 
-const validateProductInput = ({ product_name: productName, category, price }) => {
+const validateProductInput = ({
+  product_name: productName,
+  category,
+  price,
+}) => {
   if (
-    typeof productName !== 'string' ||
+    typeof productName !== "string" ||
     !productName.trim() ||
-    typeof category !== 'string' ||
+    typeof category !== "string" ||
     !category.trim() ||
     price === undefined ||
     price === null ||
     !Number.isFinite(Number(price)) ||
     Number(price) < 0
   ) {
-    return '상품명, 카테고리, 0 이상인 가격은 필수입니다.';
+    return "상품명, 카테고리, 0 이상인 가격은 필수입니다.";
   }
 
   return null;
@@ -75,11 +78,11 @@ const validateProductInput = ({ product_name: productName, category, price }) =>
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  */
-router.post('/', authenticate, requireRole('ADMIN'), async (req, res, next) => {
+router.post("/", authenticate, requireRole("ADMIN"), async (req, res, next) => {
   const validationMessage = validateProductInput(req.body || {});
   if (validationMessage) {
     return res.status(400).json({
-      error: 'INVALID_INPUT',
+      error: "INVALID_INPUT",
       message: validationMessage,
     });
   }
@@ -95,8 +98,8 @@ router.post('/', authenticate, requireRole('ADMIN'), async (req, res, next) => {
   } catch (error) {
     if (error instanceof ValidationError) {
       return res.status(400).json({
-        error: 'INVALID_INPUT',
-        message: error.errors.map(({ message }) => message).join(', '),
+        error: "INVALID_INPUT",
+        message: error.errors.map(({ message }) => message).join(", "),
       });
     }
 
@@ -124,49 +127,70 @@ router.post('/', authenticate, requireRole('ADMIN'), async (req, res, next) => {
  */
 
 // PATCH: 상품 정보 수정 (ADMIN 전용)
-router.patch('/:productId', authenticate, requireRole('ADMIN'), async (req, res, next) => {
-  const { productId } = req.params;
-  const validationMessage = validateProductInput(req.body || {});
-  if (validationMessage) {
-    return res.status(400).json({ error: 'INVALID_INPUT', message: validationMessage });
-  }
-  try {
-    const product = await Product.findByPk(productId);
-    if (!product) {
-      return res.status(404).json({ error: 'NOT_FOUND', message: '상품을 찾을 수 없습니다.' });
+router.patch(
+  "/:productId",
+  authenticate,
+  requireRole("ADMIN"),
+  async (req, res, next) => {
+    const { productId } = req.params;
+    const validationMessage = validateProductInput(req.body || {});
+    if (validationMessage) {
+      return res
+        .status(400)
+        .json({ error: "INVALID_INPUT", message: validationMessage });
     }
-    await product.update({
-      productName: req.body.product_name?.trim(),
-      category: req.body.category?.trim(),
-      price: req.body.price,
-    });
-    return res.json(serializeProduct(product));
-  } catch (error) {
-    if (error instanceof ValidationError) {
-      return res.status(400).json({ error: 'INVALID_INPUT', message: error.errors.map(({ message }) => message).join(', ') });
+    try {
+      const product = await Product.findByPk(productId);
+      if (!product) {
+        return res
+          .status(404)
+          .json({ error: "NOT_FOUND", message: "상품을 찾을 수 없습니다." });
+      }
+      await product.update({
+        productName: req.body.product_name?.trim(),
+        category: req.body.category?.trim(),
+        price: req.body.price,
+      });
+      return res.json(serializeProduct(product));
+    } catch (error) {
+      if (error instanceof ValidationError) {
+        return res
+          .status(400)
+          .json({
+            error: "INVALID_INPUT",
+            message: error.errors.map(({ message }) => message).join(", "),
+          });
+      }
+      return next(error);
     }
-    return next(error);
-  }
-});
+  },
+);
 
 // DELETE: 상품 삭제 (ADMIN 전용)
-router.delete('/:productId', authenticate, requireRole('ADMIN'), async (req, res, next) => {
-  const { productId } = req.params;
-  try {
-    const rows = await Product.destroy({ where: { productId } });
-    if (!rows) {
-      return res.status(404).json({ error: 'NOT_FOUND', message: '상품을 찾을 수 없습니다.' });
+router.delete(
+  "/:productId",
+  authenticate,
+  requireRole("ADMIN"),
+  async (req, res, next) => {
+    const { productId } = req.params;
+    try {
+      const rows = await Product.destroy({ where: { productId } });
+      if (!rows) {
+        return res
+          .status(404)
+          .json({ error: "NOT_FOUND", message: "상품을 찾을 수 없습니다." });
+      }
+      return res.status(204).send();
+    } catch (error) {
+      return next(error);
     }
-    return res.status(204).send();
-  } catch (error) {
-    return next(error);
-  }
-});
+  },
+);
 
-router.get('/', async (req, res, next) => {
+router.get("/", async (req, res, next) => {
   try {
     const products = await Product.findAll({
-      order: [['productId', 'DESC']],
+      order: [["productId", "DESC"]],
     });
     return res.json(products.map(serializeProduct));
   } catch (error) {
@@ -203,13 +227,13 @@ router.get('/', async (req, res, next) => {
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  */
-router.get('/:productId', async (req, res, next) => {
+router.get("/:productId", async (req, res, next) => {
   try {
     const product = await Product.findByPk(req.params.productId);
     if (!product) {
       return res.status(404).json({
-        error: 'NOT_FOUND',
-        message: '상품을 찾을 수 없습니다.',
+        error: "NOT_FOUND",
+        message: "상품을 찾을 수 없습니다.",
       });
     }
 
@@ -275,11 +299,11 @@ router.get('/:productId', async (req, res, next) => {
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  */
-router.patch('/:productId', async (req, res, next) => {
+router.patch("/:productId", async (req, res, next) => {
   const validationMessage = validateProductInput(req.body || {});
   if (validationMessage) {
     return res.status(400).json({
-      error: 'INVALID_INPUT',
+      error: "INVALID_INPUT",
       message: validationMessage,
     });
   }
@@ -288,8 +312,8 @@ router.patch('/:productId', async (req, res, next) => {
     const product = await Product.findByPk(req.params.productId);
     if (!product) {
       return res.status(404).json({
-        error: 'NOT_FOUND',
-        message: '상품을 찾을 수 없습니다.',
+        error: "NOT_FOUND",
+        message: "상품을 찾을 수 없습니다.",
       });
     }
 
@@ -303,8 +327,8 @@ router.patch('/:productId', async (req, res, next) => {
   } catch (error) {
     if (error instanceof ValidationError) {
       return res.status(400).json({
-        error: 'INVALID_INPUT',
-        message: error.errors.map(({ message }) => message).join(', '),
+        error: "INVALID_INPUT",
+        message: error.errors.map(({ message }) => message).join(", "),
       });
     }
 
@@ -343,13 +367,13 @@ router.patch('/:productId', async (req, res, next) => {
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  */
-router.delete('/:productId', async (req, res, next) => {
+router.delete("/:productId", async (req, res, next) => {
   try {
     const product = await Product.findByPk(req.params.productId);
     if (!product) {
       return res.status(404).json({
-        error: 'NOT_FOUND',
-        message: '상품을 찾을 수 없습니다.',
+        error: "NOT_FOUND",
+        message: "상품을 찾을 수 없습니다.",
       });
     }
 
@@ -358,8 +382,8 @@ router.delete('/:productId', async (req, res, next) => {
   } catch (error) {
     if (error instanceof ForeignKeyConstraintError) {
       return res.status(409).json({
-        error: 'CONFLICT',
-        message: '관련 데이터가 있는 상품은 삭제할 수 없습니다.',
+        error: "CONFLICT",
+        message: "관련 데이터가 있는 상품은 삭제할 수 없습니다.",
       });
     }
 

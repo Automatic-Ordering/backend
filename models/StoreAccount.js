@@ -1,5 +1,5 @@
-const { DataTypes, Model } = require('sequelize');
-const { sequelize } = require('../config/database');
+const { DataTypes, Model } = require("sequelize");
+const { sequelize } = require("../config/database");
 
 class StoreAccount extends Model {}
 
@@ -9,30 +9,30 @@ StoreAccount.init(
       type: DataTypes.BIGINT.UNSIGNED,
       primaryKey: true,
       autoIncrement: true,
-      field: 'account_id',
+      field: "account_id",
     },
     storeId: {
       type: DataTypes.BIGINT.UNSIGNED,
       allowNull: false,
       unique: true,
-      field: 'store_id',
+      field: "store_id",
     },
     passwordHash: {
       type: DataTypes.STRING(255),
       allowNull: false,
-      field: 'password_hash',
+      field: "password_hash",
     },
     passwordChangeRequired: {
       type: DataTypes.BOOLEAN,
       allowNull: false,
       defaultValue: true,
-      field: 'password_change_required',
+      field: "password_change_required",
     },
   },
   {
     sequelize,
-    modelName: 'StoreAccount',
-    tableName: 'store_accounts',
+    modelName: "StoreAccount",
+    tableName: "store_accounts",
   },
 );
 

@@ -1,16 +1,16 @@
-require('dotenv').config();
+require("dotenv").config();
 
-const { Sequelize } = require('sequelize');
+const { Sequelize } = require("sequelize");
 
 const sequelize = new Sequelize(
-  process.env.DB_NAME || 'convenience_store',
-  process.env.DB_USER || 'root',
-  process.env.DB_PASSWORD || '',
+  process.env.DB_NAME || "convenience_store",
+  process.env.DB_USER || "root",
+  process.env.DB_PASSWORD || "",
   {
-    host: process.env.DB_HOST || 'localhost',
+    host: process.env.DB_HOST || "localhost",
     port: Number(process.env.DB_PORT) || 3306,
-    dialect: 'mysql',
-    logging: process.env.NODE_ENV === 'development' ? console.log : false,
+    dialect: "mysql",
+    logging: process.env.NODE_ENV === "development" ? console.log : false,
     define: {
       underscored: true,
       timestamps: true,
@@ -23,7 +23,7 @@ const connectDatabase = async () => {
     await sequelize.authenticate();
     console.log(`Sequelize database connected: ${sequelize.config.database}`);
   } catch (error) {
-    console.error('Sequelize database connection failed:', error.message);
+    console.error("Sequelize database connection failed:", error.message);
     throw error;
   }
 };
@@ -31,9 +31,9 @@ const connectDatabase = async () => {
 const syncDatabase = async () => {
   try {
     await sequelize.sync();
-    console.log('Sequelize models synchronized.');
+    console.log("Sequelize models synchronized.");
   } catch (error) {
-    console.error('Sequelize model synchronization failed:', error.message);
+    console.error("Sequelize model synchronization failed:", error.message);
     throw error;
   }
 };

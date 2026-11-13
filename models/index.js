@@ -1,120 +1,120 @@
-const Admin = require('./Admin');
-const Store = require('./Store');
-const StoreAccount = require('./StoreAccount');
-const Product = require('./Product');
-const Inventory = require('./Inventory');
-const Sales = require('./Sales');
-const Order = require('./Order');
-const StoreInventory = require('./StoreInventory');
+const Admin = require("./Admin");
+const Store = require("./Store");
+const StoreAccount = require("./StoreAccount");
+const Product = require("./Product");
+const Inventory = require("./Inventory");
+const Sales = require("./Sales");
+const Order = require("./Order");
+const StoreInventory = require("./StoreInventory");
 
 // Associations
 Store.hasMany(Inventory, {
-  foreignKey: 'storeId',
-  sourceKey: 'storeId',
-  as: 'inventories',
+  foreignKey: "storeId",
+  sourceKey: "storeId",
+  as: "inventories",
 });
 
 Store.hasOne(StoreAccount, {
-  foreignKey: 'storeId',
-  sourceKey: 'storeId',
-  as: 'account',
+  foreignKey: "storeId",
+  sourceKey: "storeId",
+  as: "account",
 });
 
 StoreAccount.belongsTo(Store, {
-  foreignKey: 'storeId',
-  targetKey: 'storeId',
-  as: 'store',
+  foreignKey: "storeId",
+  targetKey: "storeId",
+  as: "store",
 });
 
 Inventory.belongsTo(Store, {
-  foreignKey: 'storeId',
-  targetKey: 'storeId',
-  as: 'store',
+  foreignKey: "storeId",
+  targetKey: "storeId",
+  as: "store",
 });
 
 Product.hasMany(Inventory, {
-  foreignKey: 'productId',
-  sourceKey: 'productId',
-  as: 'inventories',
+  foreignKey: "productId",
+  sourceKey: "productId",
+  as: "inventories",
 });
 
 Inventory.belongsTo(Product, {
-  foreignKey: 'productId',
-  targetKey: 'productId',
-  as: 'product',
+  foreignKey: "productId",
+  targetKey: "productId",
+  as: "product",
 });
 
 // StoreInventory associations (optional but helpful)
 Store.hasMany(StoreInventory, {
-  foreignKey: 'storeId',
-  sourceKey: 'storeId',
-  as: 'storeInventories',
+  foreignKey: "storeId",
+  sourceKey: "storeId",
+  as: "storeInventories",
 });
 
 Product.hasMany(StoreInventory, {
-  foreignKey: 'productId',
-  sourceKey: 'productId',
-  as: 'storeInventories',
+  foreignKey: "productId",
+  sourceKey: "productId",
+  as: "storeInventories",
 });
 
 StoreInventory.belongsTo(Store, {
-  foreignKey: 'storeId',
-  targetKey: 'storeId',
-  as: 'store',
+  foreignKey: "storeId",
+  targetKey: "storeId",
+  as: "store",
 });
 
 StoreInventory.belongsTo(Product, {
-  foreignKey: 'productId',
-  targetKey: 'productId',
-  as: 'product',
+  foreignKey: "productId",
+  targetKey: "productId",
+  as: "product",
 });
 
 Store.hasMany(Sales, {
-  foreignKey: 'storeId',
-  sourceKey: 'storeId',
-  as: 'sales',
+  foreignKey: "storeId",
+  sourceKey: "storeId",
+  as: "sales",
 });
 
 Sales.belongsTo(Store, {
-  foreignKey: 'storeId',
-  targetKey: 'storeId',
-  as: 'store',
+  foreignKey: "storeId",
+  targetKey: "storeId",
+  as: "store",
 });
 
 Product.hasMany(Sales, {
-  foreignKey: 'productId',
-  sourceKey: 'productId',
-  as: 'sales',
+  foreignKey: "productId",
+  sourceKey: "productId",
+  as: "sales",
 });
 
 Sales.belongsTo(Product, {
-  foreignKey: 'productId',
-  targetKey: 'productId',
-  as: 'product',
+  foreignKey: "productId",
+  targetKey: "productId",
+  as: "product",
 });
 
 Store.hasMany(Order, {
-  foreignKey: 'storeId',
-  sourceKey: 'storeId',
-  as: 'orders',
+  foreignKey: "storeId",
+  sourceKey: "storeId",
+  as: "orders",
 });
 
 Order.belongsTo(Store, {
-  foreignKey: 'storeId',
-  targetKey: 'storeId',
-  as: 'store',
+  foreignKey: "storeId",
+  targetKey: "storeId",
+  as: "store",
 });
 
 Product.hasMany(Order, {
-  foreignKey: 'productId',
-  sourceKey: 'productId',
-  as: 'orders',
+  foreignKey: "productId",
+  sourceKey: "productId",
+  as: "orders",
 });
 
 Order.belongsTo(Product, {
-  foreignKey: 'productId',
-  targetKey: 'productId',
-  as: 'product',
+  foreignKey: "productId",
+  targetKey: "productId",
+  as: "product",
 });
 
 module.exports = {

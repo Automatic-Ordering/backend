@@ -1,15 +1,15 @@
-const express = require('express');
-const { authenticate, requireRole } = require('../middleware/auth');
+const express = require("express");
+const { authenticate, requireRole } = require("../middleware/auth");
 const {
   getAdminOrderDetail,
   getAdminOrders,
   updateOrderStatus,
   ORDER_STATUSES,
-} = require('../services/orderService');
+} = require("../services/orderService");
 
 const router = express.Router();
 
-router.use(authenticate, requireRole('ADMIN'));
+router.use(authenticate, requireRole("ADMIN"));
 
 const isValidId = (value) => /^\d+$/.test(value) && Number(value) > 0;
 
@@ -49,19 +49,20 @@ const serializeOrder = (order, stockIncreased) => ({
  *       '401': { description: 관리자 인증이 필요합니다. }
  *       '403': { description: 관리자 권한이 필요합니다. }
  */
-router.get('/', async (req, res, next) => {
+router.get("/", async (req, res, next) => {
   const { store_id: storeId, status } = req.query;
 
   if (storeId !== undefined && !isValidId(storeId)) {
     return res.status(400).json({
-      error: 'INVALID_INPUT',
-      message: 'store_id는 1 이상의 정수여야 합니다.',
+      error: "INVALID_INPUT",
+      message: "store_id는 1 이상의 정수여야 합니다.",
     });
   }
   if (status !== undefined && !ORDER_STATUSES.includes(status)) {
     return res.status(400).json({
-      error: 'INVALID_INPUT',
-      message: 'status는 PENDING, ORDERED, COMPLETED, CANCELLED 중 하나여야 합니다.',
+      error: "INVALID_INPUT",
+      message:
+        "status는 PENDING, ORDERED, COMPLETED, CANCELLED 중 하나여야 합니다.",
     });
   }
 
@@ -96,12 +97,12 @@ router.get('/', async (req, res, next) => {
  *       '401': { description: 관리자 인증이 필요합니다. }
  *       '403': { description: 관리자 권한이 필요합니다. }
  */
-router.get('/:orderId', async (req, res, next) => {
+router.get("/:orderId", async (req, res, next) => {
   const { orderId } = req.params;
   if (!isValidId(orderId)) {
     return res.status(400).json({
-      error: 'INVALID_INPUT',
-      message: 'orderId는 1 이상의 정수여야 합니다.',
+      error: "INVALID_INPUT",
+      message: "orderId는 1 이상의 정수여야 합니다.",
     });
   }
 
@@ -110,7 +111,9 @@ router.get('/:orderId', async (req, res, next) => {
     return res.json(order);
   } catch (error) {
     if (error.statusCode) {
-      return res.status(error.statusCode).json({ error: error.code, message: error.message });
+      return res
+        .status(error.statusCode)
+        .json({ error: error.code, message: error.message });
     }
     return next(error);
   }
@@ -159,32 +162,38 @@ router.get('/:orderId', async (req, res, next) => {
  *       '401': { description: 관리자 인증이 필요합니다. }
  *       '403': { description: 관리자 권한이 필요합니다. }
  */
-router.patch('/:orderId/status', async (req, res, next) => {
+router.patch("/:orderId/status", async (req, res, next) => {
   const { orderId } = req.params;
   if (!isValidId(orderId)) {
     return res.status(400).json({
-      error: 'INVALID_INPUT',
-      message: 'orderId는 1 이상의 정수여야 합니다.',
+      error: "INVALID_INPUT",
+      message: "orderId는 1 이상의 정수여야 합니다.",
     });
   }
 
   const { status } = req.body || {};
-  if (typeof status !== 'string' || !ORDER_STATUSES.includes(status)) {
+  if (typeof status !== "string" || !ORDER_STATUSES.includes(status)) {
     return res.status(400).json({
-      error: 'INVALID_INPUT',
-      message: 'status는 PENDING, ORDERED, COMPLETED, CANCELLED 중 하나여야 합니다.',
+      error: "INVALID_INPUT",
+      message:
+        "status는 PENDING, ORDERED, COMPLETED, CANCELLED 중 하나여야 합니다.",
     });
   }
 
   try {
-    const { order, stockIncreased } = await updateOrderStatus(Number(orderId), status);
+    const { order, stockIncreased } = await updateOrderStatus(
+      Number(orderId),
+      status,
+    );
     return res.json({
       ...serializeOrder(order, stockIncreased),
       product_name: order.product?.productName ?? null,
     });
   } catch (error) {
     if (error.statusCode) {
-      return res.status(error.statusCode).json({ error: error.code, message: error.message });
+      return res
+        .status(error.statusCode)
+        .json({ error: error.code, message: error.message });
     }
     return next(error);
   }
