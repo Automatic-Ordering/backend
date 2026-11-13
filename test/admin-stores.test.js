@@ -1,9 +1,11 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
+const bcrypt = require('bcrypt');
 const request = require('supertest');
 const {
   app,
   adminToken,
+  storeToken,
   setConnectionMock,
   setQueryMock,
   resetTestCaptures,
@@ -12,6 +14,7 @@ const {
   getCapturedStoreAccountCreateTx,
   getCapturedBulkRows,
   getCapturedBulkTx,
+  getCapturedStoreAccountUpdate,
 } = require('./support/test-app');
 
 const createConnection = () => {
@@ -158,4 +161,85 @@ test('transaction rollback occurs when inventory bulkCreate fails', async () => 
 
   assert.equal(response.status, 500);
   assert.ok(connection.calls.includes('rollback'), 'Transaction should be rolled back');
+});
+
+/* Password reset tests */
+
+test('resets store password and returns temporary password', async () => {
+  resetTestCaptures();
+  setQueryMock(async (sql) => {
+    if (sql.includes('FROM admins')) return [[{ admin_id: 1 }]];
+    if (sql.includes('FROM stores')) return [[{ store_id: 7, store_name: '테스트점', store_code: '50001', status: 'ACTIVE' }]];
+    if (sql.includes('FROM store_accounts')) return [[{ account_id: 3, store_id: 7, password_hash: '$2b$12$oldpasswordhashvalue', password_change_required: 0 }]];
+    return [];
+  });
+
+  const response = await request(app)
+    .patch('/api/admin/stores/7/password/reset')
+    .set('Authorization', `Bearer ${adminToken()}`);
+
+  assert.equal(response.status, 200);
+  assert.equal(response.body.success, true);
+  assert.equal(response.body.message, '점포 비밀번호가 초기화되었습니다.');
+  assert.equal(response.body.data.temporaryPassword, 'Store50001!');
+
+  const update = getCapturedStoreAccountUpdate();
+  assert.ok(update, 'account.update should have been called');
+  assert.equal(update.passwordChangeRequired, true);
+  assert.ok(update.passwordHash.startsWith('$2b$12$'), 'DB must store a bcrypt hash');
+  assert.notEqual(update.passwordHash, response.body.data.temporaryPassword, 'plaintext must not be stored');
+  assert.ok(bcrypt.compareSync(response.body.data.temporaryPassword, update.passwordHash), 'hash must match the temporary password');
+  assert.ok(!JSON.stringify(response.body).includes(update.passwordHash), 'response must not leak the hash');
+});
+
+test('returns 404 when store does not exist for password reset', async () => {
+  resetTestCaptures();
+  setQueryMock(async (sql) => {
+    if (sql.includes('FROM admins')) return [[{ admin_id: 1 }]];
+    if (sql.includes('FROM stores')) return [[]];
+    return [];
+  });
+
+  const response = await request(app)
+    .patch('/api/admin/stores/999/password/reset')
+    .set('Authorization', `Bearer ${adminToken()}`);
+
+  assert.equal(response.status, 404);
+  assert.equal(response.body.message, '점포를 찾을 수 없습니다.');
+  assert.equal(getCapturedStoreAccountUpdate(), null);
+});
+
+test('returns 404 when store account does not exist for password reset', async () => {
+  resetTestCaptures();
+  setQueryMock(async (sql) => {
+    if (sql.includes('FROM admins')) return [[{ admin_id: 1 }]];
+    if (sql.includes('FROM stores')) return [[{ store_id: 7, store_name: '테스트점', store_code: '50001', status: 'ACTIVE' }]];
+    if (sql.includes('FROM store_accounts')) return [[]];
+    return [];
+  });
+
+  const response = await request(app)
+    .patch('/api/admin/stores/7/password/reset')
+    .set('Authorization', `Bearer ${adminToken()}`);
+
+  assert.equal(response.status, 404);
+  assert.equal(response.body.message, '점포 계정을 찾을 수 없습니다.');
+  assert.equal(getCapturedStoreAccountUpdate(), null);
+});
+
+test('rejects password reset for store role tokens', async () => {
+  resetTestCaptures();
+  setQueryMock(async (sql) => {
+    if (sql.includes('FROM admins')) return [[{ admin_id: 1 }]];
+    if (sql.includes('FROM stores')) return [[{ store_id: 1, store_name: '점포', store_code: '10001', status: 'ACTIVE', account_id: 1, password_hash: '$2b$12$storehash', password_change_required: 0 }]];
+    return [];
+  });
+
+  const response = await request(app)
+    .patch('/api/admin/stores/1/password/reset')
+    .set('Authorization', `Bearer ${storeToken()}`);
+
+  assert.equal(response.status, 403);
+  assert.equal(response.body.error, 'FORBIDDEN');
+  assert.equal(getCapturedStoreAccountUpdate(), null);
 });

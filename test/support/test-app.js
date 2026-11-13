@@ -27,6 +27,7 @@ let forceBulkError = false;
 let capturedCommitCount = 0;
 let capturedRollbackCount = 0;
 let bulkCreateCallCount = 0;
+let capturedStoreAccountUpdate = null;
 
 // ------------------------------------------------------------
 // Reset / control helpers
@@ -40,6 +41,7 @@ const resetTestCaptures = () => {
   capturedCommitCount = 0;
   capturedRollbackCount = 0;
   bulkCreateCallCount = 0;
+  capturedStoreAccountUpdate = null;
 };
 
 const setForceBulkError = (flag) => {
@@ -60,6 +62,7 @@ const getCapturedBulkTx = () => capturedBulkTx;
 const getCapturedCommitCount = () => capturedCommitCount;
 const getCapturedRollbackCount = () => capturedRollbackCount;
 const getBulkCreateCallCount = () => bulkCreateCallCount;
+const getCapturedStoreAccountUpdate = () => capturedStoreAccountUpdate;
 
 // ------------------------------------------------------------
 // Model Mocks
@@ -115,6 +118,13 @@ StoreAccount.findByPk = async () => {
   return row ? { passwordHash: row.password_hash, update: async () => {} } : null;
 };
 
+StoreAccount.findOne = async () => {
+  const [rows] = await queryMock(
+    'SELECT account_id, store_id, password_hash, password_change_required FROM store_accounts WHERE store_id = ?'
+  );
+  return toStoreAccount(rows?.[0]);
+};
+
 StoreAccount.create = async (values, { transaction }) => {
   capturedStoreAccountCreateTx = transaction;
   await transaction.query(
@@ -166,6 +176,24 @@ const setConnectionMock = (connection) => {
 // ------------------------------------------------------------
 // Helper to convert raw DB rows to the shape used by tests
 // ------------------------------------------------------------
+const toStoreAccount = (row) => {
+  if (!row) return null;
+  const account = {
+    accountId: row.account_id ?? row.accountId,
+    storeId: row.store_id ?? row.storeId,
+    passwordHash: row.password_hash ?? row.passwordHash,
+    passwordChangeRequired: Boolean(row.password_change_required ?? row.passwordChangeRequired),
+    update: async (values) => {
+      capturedStoreAccountUpdate = values;
+      await queryMock(
+        `UPDATE store_accounts SET ${Object.keys(values).join(', ')} WHERE store_id = ?`
+      );
+      Object.assign(account, values);
+    },
+  };
+  return account;
+};
+
 const toStore = (row) => {
   if (!row) return null;
   const store = {
@@ -209,4 +237,5 @@ module.exports = {
   getCapturedCommitCount,
   getCapturedRollbackCount,
   getBulkCreateCallCount,
+  getCapturedStoreAccountUpdate,
 };

@@ -12,7 +12,7 @@ const {
   Sales,
   Order,
 } = require('../../models');
-const { hashPassword } = require('../utils/password');
+const { hashPassword, generateTemporaryPassword } = require('../utils/password');
 const { generateStoreCode } = require('../utils/store-code');
 const { Product } = require('../../models');
 const { StoreInventory } = require('../../models');
@@ -191,7 +191,7 @@ router.post('/', async (req, res, next) => {
       const storeCode = rawStoreCode || (await findUniqueStoreCode());
       const password = typeof req.body?.password === 'string' && req.body.password
         ? req.body.password
-        : `Store${storeCode}!`;
+        : generateTemporaryPassword(storeCode);
 
       const store = await sequelize.transaction(async (transaction) => {
         // ① 점포 레코드 생성
@@ -667,6 +667,92 @@ router.delete('/:id', async (req, res, next) => {
     return res.status(204).send();
   } catch (error) {
     return handleSequelizeError(error, res, next);
+  }
+});
+
+/**
+ * @openapi
+ * /api/admin/stores/{id}/password/reset:
+ *   patch:
+ *     tags:
+ *       - Admin Stores
+ *     summary: 점포 비밀번호 초기화
+ *     description: 점포의 비밀번호를 초기화하고 새 임시 비밀번호를 발급합니다. 점포 생성 시와 동일한 규칙(Store{store_code}!)으로 임시 비밀번호를 생성합니다.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         description: 점포 ID
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       '200':
+ *         description: 비밀번호 초기화 성공
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     temporaryPassword:
+ *                       type: string
+ *       '404':
+ *         description: 점포 또는 점포 계정을 찾을 수 없습니다.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       '401':
+ *         description: 인증 실패
+ *       '403':
+ *         description: 관리자 권한 필요
+ */
+router.patch('/:id/password/reset', async (req, res, next) => {
+  if (!isValidStoreId(req.params.id)) {
+    return res.status(404).json({
+      error: 'NOT_FOUND',
+      message: '점포를 찾을 수 없습니다.',
+    });
+  }
+
+  try {
+    const store = await Store.findByPk(req.params.id);
+    if (!store) {
+      return res.status(404).json({
+        error: 'NOT_FOUND',
+        message: '점포를 찾을 수 없습니다.',
+      });
+    }
+
+    const account = await StoreAccount.findOne({ where: { storeId: store.storeId } });
+    if (!account) {
+      return res.status(404).json({
+        error: 'NOT_FOUND',
+        message: '점포 계정을 찾을 수 없습니다.',
+      });
+    }
+
+    // 기존 점포 생성과 동일한 임시 비밀번호 규칙 재사용
+    const temporaryPassword = generateTemporaryPassword(store.storeCode);
+    const passwordHash = await hashPassword(temporaryPassword);
+
+    await account.update({ passwordHash, passwordChangeRequired: true });
+
+    return res.json({
+      success: true,
+      message: '점포 비밀번호가 초기화되었습니다.',
+      data: { temporaryPassword },
+    });
+  } catch (error) {
+    return next(error);
   }
 });
 
