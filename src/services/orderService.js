@@ -12,9 +12,16 @@ const {
   buildDailySeries,
   SALES_WINDOW_DAYS,
 } = require("./orderCalculator");
+const {
+  getStoreOrderSettings,
+  serializeSetting,
+} = require("./storeOrderSettingService");
 
 const ORDER_STATUSES = ["PENDING", "ORDERED", "COMPLETED", "CANCELLED"];
 const OPEN_ORDER_STATUSES = ["PENDING", "ORDERED"];
+// 미입고(incoming) 수량에 포함할 발주 명세서 상태.
+// REQUESTED(승인 대기), APPROVED(확정), ORDERED(구 버전 발주서 발행)는 아직 입고 전이다.
+const OPEN_SPEC_STATUSES = ["REQUESTED", "APPROVED", "ORDERED"];
 const HISTORY_LIMIT = 200;
 
 const pad = (value) => String(value).padStart(2, "0");
@@ -29,11 +36,13 @@ const createHttpError = (statusCode, code, message) => {
   return error;
 };
 
-const getSalesWindow = () => {
+// 판매 분석 기간은 점포 설정(analysis_period_days)으로 대체 가능하다.
+// 설정이 없으면 기존 상수(SALES_WINDOW_DAYS = 120)를 사용한다.
+const getSalesWindow = (analysisPeriodDays = SALES_WINDOW_DAYS) => {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const windowStart = new Date(today);
-  windowStart.setDate(today.getDate() - SALES_WINDOW_DAYS);
+  windowStart.setDate(today.getDate() - analysisPeriodDays);
   const windowEnd = new Date(today);
   windowEnd.setDate(today.getDate() - 1);
   windowEnd.setHours(23, 59, 59, 999);
@@ -54,23 +63,41 @@ const aggregateDailySales = (salesRows) => {
     .map((date) => ({ date, quantity: quantityByDate.get(date) }));
 };
 
+// 미입고 수량 집계.
+// 기존 orders(구 confirm 플로우)와 order_specifications(명세서 플로우)는 서로 다른
+// 레코드를 가리키는 두 개의 독립된 소스다. 한 발주가 두 테이블에 동시에 기록되는
+// 경로는 없으므로 UNION ALL로 합산해도 동일 발주 수량이 두 번 집계되지 않는다.
 const fetchIncomingQuantities = async (
   storeId,
   { productId, transaction } = {},
 ) => {
   const [rows] = await sequelize.query(
     `
-      SELECT product_id, COALESCE(SUM(order_quantity), 0) AS incoming_quantity
-      FROM orders
-      WHERE store_id = :storeId
-        AND order_status IN (:openStatuses)
-        ${productId ? "AND product_id = :productId" : ""}
+      SELECT product_id, SUM(quantity) AS incoming_quantity
+      FROM (
+        SELECT product_id, SUM(order_quantity) AS quantity
+        FROM orders
+        WHERE store_id = :storeId
+          AND order_status IN (:openOrderStatuses)
+          ${productId ? "AND product_id = :productId" : ""}
+        GROUP BY product_id
+        UNION ALL
+        SELECT item.product_id, SUM(item.order_quantity) AS quantity
+        FROM order_specification_items item
+        INNER JOIN order_specifications spec
+          ON spec.order_spec_id = item.order_spec_id
+        WHERE spec.store_id = :storeId
+          AND spec.order_status IN (:openSpecStatuses)
+          ${productId ? "AND item.product_id = :productId" : ""}
+        GROUP BY item.product_id
+      ) incoming
       GROUP BY product_id
     `,
     {
       replacements: {
         storeId,
-        openStatuses: OPEN_ORDER_STATUSES,
+        openOrderStatuses: OPEN_ORDER_STATUSES,
+        openSpecStatuses: OPEN_SPEC_STATUSES,
         ...(productId ? { productId } : {}),
       },
       transaction,
@@ -100,6 +127,8 @@ const serializeRecommendation = (
   sales_series_days: recommendation.salesSeriesDays,
   service_level_z: recommendation.serviceLevelZ,
   lead_time_days: recommendation.leadTimeDays,
+  forecast_period_days: recommendation.forecastPeriodDays,
+  forecast_coverage_days: recommendation.coverageDays,
   order_unit: recommendation.orderUnit,
   computed_safety_stock: recommendation.computedSafetyStock,
   configured_safety_stock: recommendation.configuredSafetyStock,
@@ -125,10 +154,26 @@ const getRegisteredInventories = async (storeId, { productId } = {}) => {
   return inventories.filter((inventory) => inventory.product);
 };
 
+// 점포 설정을 계산 입력으로 변환한다.
+// analysis_period_days는 판매 조회 기간에, moving_average_days/weights/
+// service_factor/forecast_period_days는 calculateRecommendation에 전달된다.
+const buildCalculationOptions = (settings) => ({
+  serviceLevelZ: Number(settings.serviceFactor),
+  movingAverageDays: settings.movingAverageDays,
+  forecastPeriodDays: settings.forecastPeriodDays,
+  forecastWeights: {
+    movingAverage: Number(settings.movingAverageWeight),
+    sameWeekday: Number(settings.sameWeekdayWeight),
+  },
+});
+
 const getOrderRecommendations = async (
   storeId,
   { page = 1, limit = 20, search } = {},
 ) => {
+  const settings = await getStoreOrderSettings(storeId);
+  const calculationOptions = buildCalculationOptions(settings);
+  const { windowStart, windowEnd } = getSalesWindow(settings.analysisPeriodDays);
   const productWhere = search
     ? {
         [Op.or]: [
@@ -167,7 +212,6 @@ const getOrderRecommendations = async (
     return { recommendations: [], total };
   }
 
-  const { windowStart, windowEnd } = getSalesWindow();
   const productIds = inventories.map((inventory) => inventory.productId);
 
   const salesRows = await Sales.findAll({
@@ -203,6 +247,7 @@ const getOrderRecommendations = async (
       leadTimeDays: product.leadTimeDays,
       orderUnit: product.orderUnit,
       configuredSafetyStock: inventory.safetyStock,
+      ...calculationOptions,
     });
     return serializeRecommendation(
       product,
@@ -226,7 +271,9 @@ const getRecommendationDetail = async (storeId, productId) => {
   }
 
   const product = inventory.product;
-  const { windowStart, windowEnd } = getSalesWindow();
+  const settings = await getStoreOrderSettings(storeId);
+  const calculationOptions = buildCalculationOptions(settings);
+  const { windowStart, windowEnd } = getSalesWindow(settings.analysisPeriodDays);
 
   const salesRows = await Sales.findAll({
     where: {
@@ -253,6 +300,7 @@ const getRecommendationDetail = async (storeId, productId) => {
     leadTimeDays: product.leadTimeDays,
     orderUnit: product.orderUnit,
     configuredSafetyStock: inventory.safetyStock,
+    ...calculationOptions,
   });
 
   const lastSaleDate = series.length ? series[series.length - 1].key : null;
@@ -285,15 +333,21 @@ const getRecommendationDetail = async (storeId, productId) => {
       incomingQuantity,
     ),
     calculation_basis: {
-      sales_window_days: SALES_WINDOW_DAYS,
+      sales_window_days: settings.analysisPeriodDays,
       sales_series_days: series.length,
-      moving_average_sample_days: Math.min(7, series.length),
+      moving_average_sample_days: Math.min(
+        settings.movingAverageDays,
+        series.length,
+      ),
+      forecast_period_days: settings.forecastPeriodDays,
+      forecast_coverage_days: recommendation.coverageDays,
       same_weekday_sample_count: sameWeekdaySampleCount,
       recent_daily_sales: series.slice(-14).map((entry) => ({
         date: entry.key,
         quantity: entry.quantity,
       })),
     },
+    applied_settings: serializeSetting(settings),
   };
 };
 

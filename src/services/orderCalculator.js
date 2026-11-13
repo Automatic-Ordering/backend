@@ -8,6 +8,15 @@ const WARNING_CODES = {
   INSUFFICIENT_SALES_DATA: "INSUFFICIENT_SALES_DATA",
 };
 
+const assertPositiveInteger = (value, label) => {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
+    throw new Error(
+      `${label}은(는) 1 이상의 정수여야 합니다. (입력값: ${String(value)})`,
+    );
+  }
+  return value;
+};
+
 const pad = (value) => String(value).padStart(2, "0");
 
 const formatLocalDate = (date) =>
@@ -79,6 +88,12 @@ const validateInputs = (input) => ({
           }
           return z;
         })(),
+  // 예측 기간(점포 설정 forecast_period_days). 지정하지 않으면
+  // 기존 계산식 그대로 상품 리드타임만 커버리지로 사용한다.
+  forecastPeriodDays:
+    input.forecastPeriodDays === undefined || input.forecastPeriodDays === null
+      ? undefined
+      : assertPositiveInteger(input.forecastPeriodDays, "예측 기간"),
 });
 
 const buildDailySeries = (dailySales) => {
@@ -209,11 +224,25 @@ const calculateRecommendation = (input = {}) => {
     orderUnit,
     configuredSafetyStock,
     serviceLevelZ,
+    forecastPeriodDays,
   } = validateInputs(input);
 
   const dailySales = input.dailySales;
   const series = buildDailySeries(dailySales);
   const dataWarning = [];
+
+  // 점포별 예측 설정(이동평균 기간, 예측 가중치). 지정하지 않으면
+  // demandForecast의 기존 기본값(MOVING_AVERAGE_WINDOW=7, DEFAULT_WEIGHTS)을 사용한다.
+  const forecastOptions = {};
+  if (input.movingAverageDays !== undefined && input.movingAverageDays !== null) {
+    forecastOptions.movingAverageDays = assertPositiveInteger(
+      input.movingAverageDays,
+      "이동평균 기간",
+    );
+  }
+  if (input.forecastWeights !== undefined && input.forecastWeights !== null) {
+    forecastOptions.weights = input.forecastWeights;
+  }
 
   let prediction;
   if (!series.length) {
@@ -225,7 +254,7 @@ const calculateRecommendation = (input = {}) => {
     };
     dataWarning.push(WARNING_CODES.NO_SALES_DATA);
   } else {
-    prediction = predictNextDayDemand(dailySales);
+    prediction = predictNextDayDemand(dailySales, forecastOptions);
   }
 
   const stats = calculateDailyStats(series);
@@ -247,8 +276,15 @@ const calculateRecommendation = (input = {}) => {
     ? "CONFIGURED"
     : "AUTO_CALCULATED";
 
+  // 목표재고의 수요 커버리지 기간.
+  // 예측 기간이 지정되면 상품 리드타임보다 짧지 않게 보장한다(max).
+  const coverageDays =
+    forecastPeriodDays === undefined
+      ? leadTimeDays
+      : Math.max(leadTimeDays, forecastPeriodDays);
+
   const targetStock =
-    Math.ceil(prediction.predictedDemand * leadTimeDays) + appliedSafetyStock;
+    Math.ceil(prediction.predictedDemand * coverageDays) + appliedSafetyStock;
   const { rawOrderQuantity, orderQuantity } = calculateOrderQuantity({
     targetStock,
     currentStock,
@@ -265,6 +301,8 @@ const calculateRecommendation = (input = {}) => {
     salesSeriesDays: series.length,
     serviceLevelZ,
     leadTimeDays,
+    forecastPeriodDays: forecastPeriodDays ?? null,
+    coverageDays,
     orderUnit,
     computedSafetyStock,
     configuredSafetyStock: hasConfiguredSafetyStock

@@ -2,7 +2,12 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 const request = require("supertest");
 const { sequelize } = require("../config/database");
-const { Sales, StoreInventory, Order } = require("../models");
+const {
+  Sales,
+  StoreInventory,
+  StoreOrderSetting,
+  Order,
+} = require("../models");
 const {
   app,
   adminToken,
@@ -32,6 +37,30 @@ const setStoreAuthMock = () => {
     throw new Error(`Unexpected authentication query: ${sql}`);
   });
 };
+
+const overrideMethod = (target, key, implementation) => {
+  const original = target[key];
+  target[key] = implementation;
+  return () => {
+    target[key] = original;
+  };
+};
+
+// 점포별 자동 발주 기준 설정 목업 (기본값: 120/7/0.4/0.6/1.65/3)
+const mockOrderSettings = (overrides = {}) =>
+  overrideMethod(StoreOrderSetting, "findOne", async () => ({
+    settingId: 1,
+    storeId: 1,
+    analysisPeriodDays: 120,
+    movingAverageDays: 7,
+    movingAverageWeight: "0.400",
+    sameWeekdayWeight: "0.600",
+    serviceFactor: "1.650",
+    forecastPeriodDays: 3,
+    createdAt: new Date("2026-11-14T00:00:00Z"),
+    updatedAt: new Date("2026-11-14T00:00:00Z"),
+    ...overrides,
+  }));
 
 const mockTransaction = () => {
   const original = sequelize.transaction;
@@ -74,6 +103,7 @@ test("store orders endpoints require store authentication", async () => {
 
 test("returns auto order recommendations with calculated values", async () => {
   setStoreAuthMock();
+  const restoreSettings = mockOrderSettings();
 
   const salesFindAllCalls = [];
   const inventoryFindAllCalls = [];
@@ -141,9 +171,11 @@ test("returns auto order recommendations with calculated values", async () => {
     assert.equal(first.incoming_quantity, 0);
     assert.ok(Math.abs(first.predicted_demand - 4) < 1e-9);
     assert.equal(first.lead_time_days, 2);
+    assert.equal(first.forecast_period_days, 3);
+    assert.equal(first.forecast_coverage_days, 3);
     assert.equal(first.order_unit, 5);
-    assert.equal(first.target_stock, 8);
-    assert.equal(first.order_quantity, 5);
+    assert.equal(first.target_stock, 12);
+    assert.equal(first.order_quantity, 10);
     assert.equal(first.needs_order, true);
     assert.deepEqual(first.data_warning, []);
 
@@ -175,11 +207,89 @@ test("returns auto order recommendations with calculated values", async () => {
     StoreInventory.findAll = originalInventoryFindAll;
     StoreInventory.count = originalInventoryCount;
     sequelize.query = originalQuery;
+    restoreSettings();
+  }
+});
+
+test("incoming quantity aggregates legacy orders and order specifications without double counting", async () => {
+  setStoreAuthMock();
+  const restoreSettings = mockOrderSettings();
+
+  const salesFindAllCalls = [];
+  const originalSalesFindAll = Sales.findAll;
+  const originalInventoryFindAll = StoreInventory.findAll;
+  const originalInventoryCount = StoreInventory.count;
+  const originalQuery = sequelize.query;
+
+  Sales.findAll = async (args) => {
+    salesFindAllCalls.push(args);
+    return [
+      ...Array.from({ length: 7 }, (_, i) => ({
+        productId: 1,
+        salesQuantity: 2,
+        salesDate: new Date(
+          `2026-11-${String(2 + i).padStart(2, "0")}T09:00:00`,
+        ),
+      })),
+    ];
+  };
+
+  StoreInventory.findAll = async () => [
+    {
+      storeId: 1,
+      productId: 1,
+      currentStock: 0,
+      safetyStock: 0,
+      product: PRODUCT_1,
+    },
+  ];
+
+  StoreInventory.count = async () => 1;
+
+  const queryCalls = [];
+  sequelize.query = async (sql, options) => {
+    queryCalls.push({ sql, options });
+    return [[{ product_id: 1, incoming_quantity: 17 }]];
+  };
+
+  try {
+    const response = await request(app)
+      .get("/api/store/orders/recommendations?page=1&limit=20")
+      .set("Authorization", `Bearer ${storeToken()}`);
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.items[0].incoming_quantity, 17);
+    assert.equal(queryCalls.length, 1);
+
+    const { sql, options } = queryCalls[0];
+    assert.match(sql, /UNION ALL/);
+    assert.match(sql, /FROM orders/);
+    assert.match(sql, /order_specification_items/);
+    assert.match(sql, /order_specifications/);
+    assert.equal(sql.split("FROM orders").length - 1, 1);
+    assert.equal(sql.split("order_specification_items").length - 1, 1);
+    assert.equal(options.replacements.storeId, 1);
+    assert.deepEqual(options.replacements.openOrderStatuses, [
+      "PENDING",
+      "ORDERED",
+    ]);
+    assert.deepEqual(options.replacements.openSpecStatuses, [
+      "REQUESTED",
+      "APPROVED",
+      "ORDERED",
+    ]);
+  } finally {
+    Sales.findAll = originalSalesFindAll;
+    StoreInventory.findAll = originalInventoryFindAll;
+    StoreInventory.count = originalInventoryCount;
+    sequelize.query = originalQuery;
+    restoreSettings();
   }
 });
 
 test("recommendations search filters products server-side", async () => {
   setStoreAuthMock();
+  const restoreSettings = mockOrderSettings();
 
   const findAllCalls = [];
   const countCalls = [];
@@ -216,6 +326,7 @@ test("recommendations search filters products server-side", async () => {
     StoreInventory.findAll = originalInventoryFindAll;
     StoreInventory.count = originalInventoryCount;
     sequelize.query = originalQuery;
+    restoreSettings();
   }
 });
 
@@ -250,6 +361,7 @@ test("recommendation detail validates product id and ownership", async () => {
 
 test("recommendation detail includes calculation basis", async () => {
   setStoreAuthMock();
+  const restoreSettings = mockOrderSettings();
 
   const originalInventoryFindAll = StoreInventory.findAll;
   const originalSalesFindAll = Sales.findAll;
@@ -279,14 +391,20 @@ test("recommendation detail includes calculation basis", async () => {
       .set("Authorization", `Bearer ${storeToken()}`);
 
     assert.equal(response.status, 200);
+    assert.equal(response.body.calculation_basis.sales_window_days, 120);
     assert.equal(response.body.calculation_basis.sales_series_days, 7);
     assert.equal(response.body.calculation_basis.moving_average_sample_days, 7);
+    assert.equal(response.body.calculation_basis.forecast_period_days, 3);
+    assert.equal(response.body.calculation_basis.forecast_coverage_days, 3);
     assert.equal(response.body.calculation_basis.same_weekday_sample_count, 1);
     assert.equal(response.body.calculation_basis.recent_daily_sales.length, 7);
+    assert.equal(response.body.applied_settings.analysis_period_days, 120);
+    assert.equal(response.body.applied_settings.forecast_period_days, 3);
   } finally {
     StoreInventory.findAll = originalInventoryFindAll;
     Sales.findAll = originalSalesFindAll;
     sequelize.query = originalQuery;
+    restoreSettings();
   }
 });
 

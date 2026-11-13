@@ -79,6 +79,20 @@ const resolveWeights = (options) => {
   return { movingAverage: movingAverage / sum, sameWeekday: sameWeekday / sum };
 };
 
+// 이동평균 기간. 점포 설정(moving_average_days)으로 변경할 수 있고,
+// 지정하지 않으면 기존 상수(MOVING_AVERAGE_WINDOW = 7)를 사용한다.
+const resolveMovingAverageDays = (options) => {
+  const days = options?.movingAverageDays;
+  if (days === undefined || days === null) {
+    return MOVING_AVERAGE_WINDOW;
+  }
+  const parsed = Number(days);
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    throw new Error("이동평균 기간은 1 이상의 정수여야 합니다.");
+  }
+  return parsed;
+};
+
 const predictNextDayDemand = (dailySales, options = {}) => {
   if (!Array.isArray(dailySales) || dailySales.length === 0) {
     throw new Error("판매 데이터 배열이 비어 있습니다.");
@@ -112,11 +126,12 @@ const predictNextDayDemand = (dailySales, options = {}) => {
 
   const dataWarning = [];
 
-  const windowSize = Math.min(MOVING_AVERAGE_WINDOW, series.length);
+  const movingAverageDays = resolveMovingAverageDays(options);
+  const windowSize = Math.min(movingAverageDays, series.length);
   const movingAverage =
     series.slice(-windowSize).reduce((sum, day) => sum + day.quantity, 0) /
     windowSize;
-  if (series.length < MOVING_AVERAGE_WINDOW) {
+  if (series.length < movingAverageDays) {
     dataWarning.push(WARNING_CODES.INSUFFICIENT_MOVING_AVERAGE_WINDOW);
   }
 
@@ -160,5 +175,6 @@ const predictNextDayDemand = (dailySales, options = {}) => {
 module.exports = {
   predictNextDayDemand,
   DEFAULT_WEIGHTS,
+  MOVING_AVERAGE_WINDOW,
   WARNING_CODES,
 };

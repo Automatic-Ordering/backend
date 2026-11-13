@@ -5,6 +5,7 @@ const {
   createOrderSpec,
   updateOrderSpecItems,
   submitOrderSpec,
+  confirmOrderSpec,
   cancelOrderSpec,
   receiveOrderSpec,
   getOrderSpecs,
@@ -170,7 +171,7 @@ router.get("/", async (req, res, next) => {
  *     tags:
  *       - Store Order Specs
  *     summary: 입고 대기 발주 목록 조회
- *     description: 발주서 발행이 완료된(ORDERED) 입고 대기 명세서 목록을 조회합니다.
+ *     description: 발주 확정이 완료된(APPROVED) 입고 대기 명세서 목록을 조회합니다.
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -201,7 +202,7 @@ router.get("/pending-receipts", async (req, res, next) => {
 
   try {
     const { specs, total } = await getOrderSpecs(req.user.storeId, {
-      status: "ORDERED",
+      status: "APPROVED",
       page: pagination.page,
       limit: pagination.limit,
     });
@@ -366,12 +367,51 @@ router.post("/:specId/submit", async (req, res, next) => {
 
 /**
  * @openapi
+ * /api/store/orders/specs/{specId}/confirm:
+ *   post:
+ *     tags:
+ *       - Store Order Specs
+ *     summary: 발주 확정
+ *     description: 점포가 승인 대기(REQUESTED) 명세서의 요청 내역을 확인하고 발주를 확정(APPROVED)합니다. 확정 일시가 기록되며 이후 입고 처리만 가능합니다.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: specId
+ *         required: true
+ *         schema: { type: integer, minimum: 1 }
+ *     responses:
+ *       '200': { description: 확정 완료 (APPROVED) }
+ *       '404': { description: 발주 명세서를 찾을 수 없습니다. }
+ *       '409': { description: 허용되지 않는 상태 전이입니다. }
+ *       '401': { description: 점포 인증이 필요합니다. }
+ *       '403': { description: 점포 권한이 필요합니다. }
+ */
+router.post("/:specId/confirm", async (req, res, next) => {
+  const { specId } = req.params;
+  if (!isValidId(specId)) {
+    return res.status(400).json({
+      error: "INVALID_INPUT",
+      message: "specId는 1 이상의 정수여야 합니다.",
+    });
+  }
+
+  try {
+    const spec = await confirmOrderSpec(req.user.storeId, Number(specId));
+    return res.json(spec);
+  } catch (error) {
+    return handleServiceError(res, next, error);
+  }
+});
+
+/**
+ * @openapi
  * /api/store/orders/specs/{specId}/cancel:
  *   post:
  *     tags:
  *       - Store Order Specs
- *     summary: 발주 명세서 취소
- *     description: DRAFT 또는 REQUESTED 상태의 명세서를 CANCELLED 상태로 변경합니다.
+ *     summary: 발주 취소
+ *     description: 입고 전(DRAFT, REQUESTED, APPROVED) 상태의 명세서를 CANCELLED 상태로 변경합니다.
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -411,7 +451,7 @@ router.post("/:specId/cancel", async (req, res, next) => {
  *       - Store Order Specs
  *     summary: 입고 처리
  *     description: |
- *       발주서 발행 완료(ORDERED) 명세서의 실제 입고 수량을 입력해 입고를 완료(RECEIVED) 처리합니다.
+ *       발주 확정 완료(APPROVED) 명세서의 실제 입고 수량을 입력해 입고를 완료(RECEIVED) 처리합니다.
  *       처리 시 트랜잭션으로 점포 재고(StoreInventory)가 실제 입고 수량만큼 증가하며, 주문 수량과 입고 수량 비교 결과를 반환합니다.
  *       중복 입고는 차단됩니다. 명세서의 모든 상품에 대한 입고 수량 입력이 필요합니다.
  *     security:

@@ -9,6 +9,7 @@ const StoreInventory = require("./StoreInventory");
 const OrderSpecification = require("./OrderSpecification");
 const OrderSpecificationItem = require("./OrderSpecificationItem");
 const OrderStatusHistory = require("./OrderStatusHistory");
+const StoreOrderSetting = require("./StoreOrderSetting");
 
 // Associations
 Store.hasMany(Inventory, {
@@ -153,6 +154,19 @@ OrderStatusHistory.belongsTo(OrderSpecification, {
   as: "orderSpecification",
 });
 
+// 점포별 자동 발주 기준 설정 (점포당 1행)
+Store.hasOne(StoreOrderSetting, {
+  foreignKey: "storeId",
+  sourceKey: "storeId",
+  as: "orderSetting",
+});
+
+StoreOrderSetting.belongsTo(Store, {
+  foreignKey: "storeId",
+  targetKey: "storeId",
+  as: "store",
+});
+
 module.exports = {
   Admin,
   Store,
@@ -165,4 +179,5 @@ module.exports = {
   OrderSpecification,
   OrderSpecificationItem,
   OrderStatusHistory,
+  StoreOrderSetting,
 };

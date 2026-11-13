@@ -38,7 +38,7 @@ const getConfirmInputError = (body) => {
  *     tags:
  *       - Store Orders
  *     summary: 자동 발주 추천 목록 조회
- *     description: 로그인된 점포에 등록된 상품별로 수요 예측(최근 7일 이동평균 0.4 + 동일 요일 평균 0.6), 안전재고, 목표재고, 추천 발주량을 계산해 반환합니다. page/limit으로 페이지네이션되며, search로 상품명·카테고리를 필터링합니다. 판매 데이터 부족 시 data_warning에 경고 코드를 포함합니다.
+ *     description: 로그인된 점포에 등록된 상품별로 수요 예측(점포 설정의 이동평균 기간/예측 가중치/서비스 계수/예측 기간 적용, 기본값 7일 이동평균 0.4 + 동일 요일 평균 0.6), 안전재고, 목표재고, 추천 발주량을 계산해 반환합니다. 판매 분석 기간도 점포 설정(기본 120일)을 따릅니다. page/limit으로 페이지네이션되며, search로 상품명·카테고리를 필터링합니다. 판매 데이터 부족 시 data_warning에 경고 코드를 포함합니다.
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -74,7 +74,7 @@ const getConfirmInputError = (body) => {
  *                       product_name: { type: string, example: 참치마요 삼각김밥 }
  *                       category: { type: string, example: '삼각김밥 / 샌드위치' }
  *                       current_stock: { type: integer, example: 3 }
- *                       incoming_quantity: { type: integer, description: 입고 예정 수량 (PENDING/ORDERED 발주 합계), example: 0 }
+ *                       incoming_quantity: { type: integer, description: 입고 예정 수량 (legacy orders PENDING/ORDERED + 발주 명세서 REQUESTED/APPROVED 합계), example: 0 }
  *                       predicted_demand: { type: number, description: 다음 날 예상 판매량, example: 8.2 }
  *                       moving_average: { type: number, example: 10 }
  *                       same_weekday_average: { type: number, nullable: true, example: 7 }

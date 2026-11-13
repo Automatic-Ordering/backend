@@ -20,6 +20,7 @@ const storeOrderRoutes = require("./routes/store-orders");
 const adminOrderRoutes = require("./routes/admin-orders");
 const storeOrderSpecRoutes = require("./routes/store-order-specs");
 const adminOrderSpecRoutes = require("./routes/admin-order-specs");
+const storeOrderSettingsRoutes = require("./routes/store-order-settings");
 const { seedProducts } = require("../scripts/seed-products");
 
 const app = express();
@@ -89,6 +90,7 @@ app.use("/api/store/sales", storeSalesRoutes);
 // /api/*/orders/:orderId 경로에 가려지지 않는다.
 app.use("/api/store/orders/specs", storeOrderSpecRoutes);
 app.use("/api/admin/orders/specs", adminOrderSpecRoutes);
+app.use("/api/store/order-settings", storeOrderSettingsRoutes);
 app.use("/api/store/orders", storeOrderRoutes);
 app.use("/api/admin/orders", adminOrderRoutes);
 
@@ -119,8 +121,12 @@ const swaggerDefinition = {
       description: "점포 발주 명세서 작성/제출/입고 API",
     },
     {
+      name: "Store Order Settings",
+      description: "점포별 자동 발주 기준 설정 조회/수정 API",
+    },
+    {
       name: "Admin Order Specs",
-      description: "본사 발주 명세서 승인/반려/발주서 발행 API",
+      description: "본사 발주 명세서 조회 API",
     },
   ],
   components: {

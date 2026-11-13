@@ -21,8 +21,8 @@ const SPEC_STATUSES = [
 
 const SPEC_STATUS_TRANSITIONS = {
   DRAFT: ["REQUESTED", "CANCELLED"],
-  REQUESTED: ["APPROVED", "REJECTED", "CANCELLED"],
-  APPROVED: ["ORDERED"],
+  REQUESTED: ["APPROVED", "CANCELLED"],
+  APPROVED: ["RECEIVED", "CANCELLED"],
   REJECTED: [],
   ORDERED: ["RECEIVED"],
   RECEIVED: [],
@@ -387,10 +387,10 @@ const cancelOrderSpec = async (storeId, orderSpecId) =>
     return serializeSpec(updated);
   });
 
-const approveOrderSpec = async (orderSpecId, adminId) =>
+const confirmOrderSpec = async (storeId, orderSpecId) =>
   sequelize.transaction(async (transaction) => {
     const spec = await OrderSpecification.findOne({
-      where: { orderSpecId },
+      where: { orderSpecId, storeId },
       transaction,
       lock: true,
     });
@@ -400,64 +400,8 @@ const approveOrderSpec = async (orderSpecId, adminId) =>
 
     const { spec: updated } = await applyTransition(spec, "APPROVED", {
       transaction,
-      adminId,
-      note: "본사 승인",
-      extraFields: { adminId, approvedAt: new Date() },
-    });
-    return serializeSpec(updated);
-  });
-
-const rejectOrderSpec = async (orderSpecId, adminId, reason) => {
-  const trimmedReason = typeof reason === "string" ? reason.trim() : "";
-  if (!trimmedReason) {
-    throw createHttpError(
-      400,
-      "INVALID_INPUT",
-      "반려 사유(reason)는 필수입니다.",
-    );
-  }
-  const safeReason = trimmedReason.slice(0, 500);
-
-  return sequelize.transaction(async (transaction) => {
-    const spec = await OrderSpecification.findOne({
-      where: { orderSpecId },
-      transaction,
-      lock: true,
-    });
-    if (!spec) {
-      throw createHttpError(404, "NOT_FOUND", "발주 명세서를 찾을 수 없습니다.");
-    }
-
-    const { spec: updated } = await applyTransition(spec, "REJECTED", {
-      transaction,
-      adminId,
-      note: `본사 반려: ${safeReason}`,
-      extraFields: { adminId, rejectedAt: new Date(), rejectionReason: safeReason },
-    });
-    return serializeSpec(updated);
-  });
-};
-
-const issueOrderSpec = async (orderSpecId, adminId) =>
-  sequelize.transaction(async (transaction) => {
-    const spec = await OrderSpecification.findOne({
-      where: { orderSpecId },
-      transaction,
-      lock: true,
-    });
-    if (!spec) {
-      throw createHttpError(404, "NOT_FOUND", "발주 명세서를 찾을 수 없습니다.");
-    }
-
-    const now = new Date();
-    const { spec: updated } = await applyTransition(spec, "ORDERED", {
-      transaction,
-      adminId,
-      note: "발주서 발행",
-      extraFields: {
-        issuedOrderNumber: buildOrderNumber("PO", spec.orderSpecId, now),
-        issuedAt: now,
-      },
+      note: "발주 확정",
+      extraFields: { approvedAt: new Date() },
     });
     return serializeSpec(updated);
   });
@@ -695,10 +639,8 @@ module.exports = {
   createOrderSpec,
   updateOrderSpecItems,
   submitOrderSpec,
+  confirmOrderSpec,
   cancelOrderSpec,
-  approveOrderSpec,
-  rejectOrderSpec,
-  issueOrderSpec,
   receiveOrderSpec,
   getOrderSpecs,
   getOrderSpecDetail,

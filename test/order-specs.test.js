@@ -8,6 +8,7 @@ const {
   OrderStatusHistory,
   StoreInventory,
   Sales,
+  StoreOrderSetting,
 } = require("../models");
 const {
   app,
@@ -104,6 +105,22 @@ const STORE_INVENTORIES = [
   },
 ];
 
+// 점포별 자동 발주 기준 설정 목업 (기본값: 120/7/0.4/0.6/1.65/3)
+const mockOrderSettings = (overrides = {}) =>
+  overrideMethod(StoreOrderSetting, "findOne", async () => ({
+    settingId: 1,
+    storeId: 1,
+    analysisPeriodDays: 120,
+    movingAverageDays: 7,
+    movingAverageWeight: "0.400",
+    sameWeekdayWeight: "0.600",
+    serviceFactor: "1.650",
+    forecastPeriodDays: 3,
+    createdAt: new Date("2026-11-14T00:00:00Z"),
+    updatedAt: new Date("2026-11-14T00:00:00Z"),
+    ...overrides,
+  }));
+
 const buildSpecInstance = (overrides = {}) => {
   const spec = {
     orderSpecId: 101,
@@ -176,10 +193,10 @@ test("spec endpoints require authentication and proper roles", async () => {
     .set("Authorization", `Bearer ${storeToken()}`);
   assert.equal(storeOnAdminList.status, 403);
 
-  const storeOnAdminApprove = await request(app)
-    .post("/api/admin/orders/specs/101/approve")
+  const storeOnAdminDetail = await request(app)
+    .get("/api/admin/orders/specs/101")
     .set("Authorization", `Bearer ${storeToken()}`);
-  assert.equal(storeOnAdminApprove.status, 403);
+  assert.equal(storeOnAdminDetail.status, 403);
 });
 
 test("creates DRAFT specification from submitted items with server-side amounts", async () => {
@@ -299,6 +316,7 @@ test("creates DRAFT specification from submitted items with server-side amounts"
 test("creates DRAFT specification from auto order recommendations", async () => {
   setStoreAuthMock();
   const restoreTransaction = mockTransaction();
+  const restoreSettings = mockOrderSettings();
 
   const originalQuery = sequelize.query;
   sequelize.query = async () => [[{ product_id: 1, incoming_quantity: 0 }]];
@@ -350,9 +368,9 @@ test("creates DRAFT specification from auto order recommendations", async () => 
     assert.equal(response.body.order_status, "DRAFT");
     assert.equal(response.body.items.length, 1);
     assert.equal(response.body.items[0].product_id, 1);
-    assert.equal(response.body.items[0].order_quantity, 5);
-    assert.equal(response.body.items[0].amount, 7500);
-    assert.equal(response.body.total_amount, 7500);
+    assert.equal(response.body.items[0].order_quantity, 10);
+    assert.equal(response.body.items[0].amount, 15000);
+    assert.equal(response.body.total_amount, 15000);
 
     const restoreInventoryCount2 = overrideMethod(
       StoreInventory,
@@ -377,6 +395,7 @@ test("creates DRAFT specification from auto order recommendations", async () => 
     restoreSpecCreate();
     restoreItemBulkCreate();
     restoreHistoryCreate();
+    restoreSettings();
     restoreTransaction();
   }
 });
@@ -550,8 +569,8 @@ test("submit moves DRAFT to REQUESTED and records request date", async () => {
   }
 });
 
-test("admin approves REQUESTED specification and records approver", async () => {
-  setAdminAuthMock();
+test("store confirms REQUESTED specification", async () => {
+  setStoreAuthMock();
   const restoreTransaction = mockTransaction();
 
   const spec = buildSpecInstance({ orderSpecId: 101, orderStatus: "REQUESTED" });
@@ -568,153 +587,95 @@ test("admin approves REQUESTED specification and records approver", async () => 
   const restoreHistoryCreate = overrideMethod(
     OrderStatusHistory,
     "create",
-    async (values) => {
-      historyCalls.push(values);
+    async (values, options) => {
+      historyCalls.push({ values, options });
       return { historyId: 920, ...values };
     },
   );
 
   try {
     const response = await request(app)
-      .post("/api/admin/orders/specs/101/approve")
-      .set("Authorization", `Bearer ${adminToken()}`);
+      .post("/api/store/orders/specs/101/confirm")
+      .set("Authorization", `Bearer ${storeToken()}`);
 
     assert.equal(response.status, 200);
     assert.equal(response.body.order_status, "APPROVED");
-    assert.equal(response.body.admin_id, 1);
+    assert.equal(response.body.admin_id, null);
     assert.ok(response.body.approved_at);
     assert.equal(findOneCalls[0].where.orderSpecId, 101);
-    assert.equal(findOneCalls[0].where.storeId, undefined);
-    assert.equal(historyCalls[0].toStatus, "APPROVED");
-    assert.equal(historyCalls[0].changedByAdminId, 1);
+    assert.equal(findOneCalls[0].where.storeId, 1);
+    assert.equal(historyCalls[0].values.fromStatus, "REQUESTED");
+    assert.equal(historyCalls[0].values.toStatus, "APPROVED");
+    assert.equal(historyCalls[0].values.changedByAdminId, null);
+    assert.equal(historyCalls[0].values.note, "발주 확정");
+    assert.ok(historyCalls[0].options.transaction);
 
-    const approvedSpec = buildSpecInstance({
+    const confirmedSpec = buildSpecInstance({
       orderSpecId: 101,
       orderStatus: "APPROVED",
     });
     const restoreSpecFindOne2 = overrideMethod(
       OrderSpecification,
       "findOne",
-      async () => approvedSpec,
+      async () => confirmedSpec,
     );
     try {
-      const duplicateApprove = await request(app)
-        .post("/api/admin/orders/specs/101/approve")
-        .set("Authorization", `Bearer ${adminToken()}`);
-      assert.equal(duplicateApprove.status, 409);
-      assert.equal(duplicateApprove.body.error, "INVALID_SPEC_STATUS");
+      const duplicateConfirm = await request(app)
+        .post("/api/store/orders/specs/101/confirm")
+        .set("Authorization", `Bearer ${storeToken()}`);
+      assert.equal(duplicateConfirm.status, 409);
+      assert.equal(duplicateConfirm.body.error, "INVALID_SPEC_STATUS");
     } finally {
       restoreSpecFindOne2();
     }
-  } finally {
-    restoreSpecFindOne();
-    restoreHistoryCreate();
-    restoreTransaction();
-  }
-});
 
-test("admin rejects specification with mandatory reason", async () => {
-  setAdminAuthMock();
-  const restoreTransaction = mockTransaction();
-
-  const spec = buildSpecInstance({ orderSpecId: 101, orderStatus: "REQUESTED" });
-  const historyCalls = [];
-  const restoreSpecFindOne = overrideMethod(
-    OrderSpecification,
-    "findOne",
-    async () => spec,
-  );
-  const restoreHistoryCreate = overrideMethod(
-    OrderStatusHistory,
-    "create",
-    async (values) => {
-      historyCalls.push(values);
-      return { historyId: 930, ...values };
-    },
-  );
-
-  try {
-    const response = await request(app)
-      .post("/api/admin/orders/specs/101/reject")
-      .set("Authorization", `Bearer ${adminToken()}`)
-      .send({ reason: "발주 수량이 과다합니다." });
-
-    assert.equal(response.status, 200);
-    assert.equal(response.body.order_status, "REJECTED");
-    assert.equal(response.body.admin_id, 1);
-    assert.equal(response.body.rejection_reason, "발주 수량이 과다합니다.");
-    assert.ok(response.body.rejected_at);
-    assert.equal(historyCalls[0].toStatus, "REJECTED");
-    assert.equal(historyCalls[0].changedByAdminId, 1);
-    assert.match(historyCalls[0].note, /발주 수량이 과다합니다/);
-
-    const missingReason = await request(app)
-      .post("/api/admin/orders/specs/101/reject")
-      .set("Authorization", `Bearer ${adminToken()}`)
-      .send({});
-    assert.equal(missingReason.status, 400);
-
-    const blankReason = await request(app)
-      .post("/api/admin/orders/specs/101/reject")
-      .set("Authorization", `Bearer ${adminToken()}`)
-      .send({ reason: "   " });
-    assert.equal(blankReason.status, 400);
-  } finally {
-    restoreSpecFindOne();
-    restoreHistoryCreate();
-    restoreTransaction();
-  }
-});
-
-test("admin issues order sheet for approved specification", async () => {
-  setAdminAuthMock();
-  const restoreTransaction = mockTransaction();
-
-  const spec = buildSpecInstance({ orderSpecId: 101, orderStatus: "APPROVED" });
-  const restoreSpecFindOne = overrideMethod(
-    OrderSpecification,
-    "findOne",
-    async () => spec,
-  );
-  const restoreHistoryCreate = overrideMethod(
-    OrderStatusHistory,
-    "create",
-    async (values) => ({ historyId: 940, ...values }),
-  );
-
-  try {
-    const response = await request(app)
-      .post("/api/admin/orders/specs/101/issue")
-      .set("Authorization", `Bearer ${adminToken()}`);
-
-    assert.equal(response.status, 200);
-    assert.equal(response.body.order_status, "ORDERED");
-    assert.match(response.body.issued_order_number, /^PO-\d{8}-000101$/);
-    assert.ok(response.body.issued_at);
-
-    const requestedSpec = buildSpecInstance({
-      orderSpecId: 101,
+    const otherStoreSpec = buildSpecInstance({
+      orderSpecId: 999,
       orderStatus: "REQUESTED",
     });
-    const restoreSpecFindOne2 = overrideMethod(
+    const restoreSpecFindOne3 = overrideMethod(
       OrderSpecification,
       "findOne",
-      async () => requestedSpec,
+      async (args) => {
+        assert.equal(args.where.storeId, 1);
+        assert.equal(args.where.orderSpecId, 999);
+        return null;
+      },
     );
     try {
-      const notApproved = await request(app)
-        .post("/api/admin/orders/specs/101/issue")
-        .set("Authorization", `Bearer ${adminToken()}`);
-      assert.equal(notApproved.status, 409);
-      assert.equal(notApproved.body.error, "INVALID_SPEC_STATUS");
+      const notFound = await request(app)
+        .post("/api/store/orders/specs/999/confirm")
+        .set("Authorization", `Bearer ${storeToken()}`);
+      assert.equal(notFound.status, 404);
+      assert.equal(otherStoreSpec.orderStatus, "REQUESTED");
     } finally {
-      restoreSpecFindOne2();
+      restoreSpecFindOne3();
     }
   } finally {
     restoreSpecFindOne();
     restoreHistoryCreate();
     restoreTransaction();
   }
+});
+
+test("admin approve, reject and issue endpoints are no longer available", async () => {
+  setAdminAuthMock();
+
+  const approve = await request(app)
+    .post("/api/admin/orders/specs/101/approve")
+    .set("Authorization", `Bearer ${adminToken()}`);
+  assert.equal(approve.status, 404);
+
+  const reject = await request(app)
+    .post("/api/admin/orders/specs/101/reject")
+    .set("Authorization", `Bearer ${adminToken()}`)
+    .send({ reason: "사유" });
+  assert.equal(reject.status, 404);
+
+  const issue = await request(app)
+    .post("/api/admin/orders/specs/101/issue")
+    .set("Authorization", `Bearer ${adminToken()}`);
+  assert.equal(issue.status, 404);
 });
 
 test("admin lists specifications with filters and pagination", async () => {
@@ -816,7 +777,7 @@ test("store list is scoped and detail blocks other stores", async () => {
       .get("/api/store/orders/specs/pending-receipts")
       .set("Authorization", `Bearer ${storeToken()}`);
     assert.equal(pendingReceipts.status, 200);
-    assert.equal(findAllCalls[1].where.orderStatus, "ORDERED");
+    assert.equal(findAllCalls[1].where.orderStatus, "APPROVED");
     assert.equal(findAllCalls[1].where.storeId, 1);
 
     const invalidStatus = await request(app)
@@ -869,7 +830,7 @@ test("receipt completes order and increases store inventory", async () => {
   });
   const spec = buildSpecInstance({
     orderSpecId: 101,
-    orderStatus: "ORDERED",
+    orderStatus: "APPROVED",
     items: [item1, item2],
   });
 
@@ -970,9 +931,9 @@ test("duplicate receipt and invalid receipt inputs are blocked", async () => {
     restoreSpecFindOne();
   }
 
-  const orderedSpec = buildSpecInstance({
+  const approvedSpec = buildSpecInstance({
     orderSpecId: 102,
-    orderStatus: "ORDERED",
+    orderStatus: "APPROVED",
     items: [
       buildItemInstance({ orderSpecItemId: 1, productId: 1 }),
       buildItemInstance({
@@ -986,7 +947,7 @@ test("duplicate receipt and invalid receipt inputs are blocked", async () => {
   const restoreSpecFindOne2 = overrideMethod(
     OrderSpecification,
     "findOne",
-    async () => orderedSpec,
+    async () => approvedSpec,
   );
 
   try {
@@ -1003,15 +964,15 @@ test("duplicate receipt and invalid receipt inputs are blocked", async () => {
       .send({ items: [{ product_id: 1, received_quantity: -1 }] });
     assert.equal(negativeQuantity.status, 400);
 
-    const notOrderedSpec = buildSpecInstance({
+    const requestedSpec = buildSpecInstance({
       orderSpecId: 103,
-      orderStatus: "APPROVED",
+      orderStatus: "REQUESTED",
       items: [buildItemInstance({ orderSpecItemId: 1, productId: 1 })],
     });
     const restoreSpecFindOne3 = overrideMethod(
       OrderSpecification,
       "findOne",
-      async () => notOrderedSpec,
+      async () => requestedSpec,
     );
     try {
       const wrongStatus = await request(app)
@@ -1020,6 +981,7 @@ test("duplicate receipt and invalid receipt inputs are blocked", async () => {
         .send({ items: [{ product_id: 1, received_quantity: 5 }] });
       assert.equal(wrongStatus.status, 409);
       assert.equal(wrongStatus.body.error, "INVALID_SPEC_STATUS");
+      assert.equal(requestedSpec.updateCalls.length, 0);
     } finally {
       restoreSpecFindOne3();
     }
@@ -1042,7 +1004,7 @@ test("receipt failure rolls back the transaction", async () => {
 
   const spec = buildSpecInstance({
     orderSpecId: 101,
-    orderStatus: "ORDERED",
+    orderStatus: "APPROVED",
     items: [buildItemInstance({ orderSpecItemId: 1, productId: 1 })],
   });
   const restoreSpecFindOne = overrideMethod(
@@ -1071,7 +1033,7 @@ test("receipt failure rolls back the transaction", async () => {
     assert.equal(getCapturedRollbackCount(), 1);
     assert.equal(getCapturedCommitCount(), 0);
     assert.equal(spec.saveCalls.length, 0);
-    assert.equal(spec.orderStatus, "ORDERED");
+    assert.equal(spec.orderStatus, "APPROVED");
     assert.equal(spec.receivedAt, null);
   } finally {
     restoreSpecFindOne();
@@ -1080,7 +1042,7 @@ test("receipt failure rolls back the transaction", async () => {
   }
 });
 
-test("store cannot cancel approved specification", async () => {
+test("store can cancel confirmed specification before receipt", async () => {
   setStoreAuthMock();
   const restoreTransaction = mockTransaction();
 
@@ -1093,17 +1055,43 @@ test("store cannot cancel approved specification", async () => {
     "findOne",
     async () => approvedSpec,
   );
+  const restoreHistoryCreate = overrideMethod(
+    OrderStatusHistory,
+    "create",
+    async (values) => ({ historyId: 961, ...values }),
+  );
 
   try {
     const response = await request(app)
       .post("/api/store/orders/specs/101/cancel")
       .set("Authorization", `Bearer ${storeToken()}`);
 
-    assert.equal(response.status, 409);
-    assert.equal(response.body.error, "INVALID_SPEC_STATUS");
-    assert.equal(approvedSpec.updateCalls.length, 0);
+    assert.equal(response.status, 200);
+    assert.equal(response.body.order_status, "CANCELLED");
+    assert.equal(approvedSpec.updateCalls[0].values.orderStatus, "CANCELLED");
+
+    const receivedSpec = buildSpecInstance({
+      orderSpecId: 102,
+      orderStatus: "RECEIVED",
+    });
+    const restoreSpecFindOne2 = overrideMethod(
+      OrderSpecification,
+      "findOne",
+      async () => receivedSpec,
+    );
+    try {
+      const blocked = await request(app)
+        .post("/api/store/orders/specs/102/cancel")
+        .set("Authorization", `Bearer ${storeToken()}`);
+      assert.equal(blocked.status, 409);
+      assert.equal(blocked.body.error, "INVALID_SPEC_STATUS");
+      assert.equal(receivedSpec.updateCalls.length, 0);
+    } finally {
+      restoreSpecFindOne2();
+    }
   } finally {
     restoreSpecFindOne();
+    restoreHistoryCreate();
     restoreTransaction();
   }
 });
