@@ -26,7 +26,7 @@ const handleServiceError = (res, next, error) => {
  *     tags:
  *       - Store Order Settings
  *     summary: 점포 자동 발주 기준 설정 조회
- *     description: 현재 로그인된 점포의 자동 발주 계산 기준 설정을 조회합니다. 설정 행이 없으면 기본값(120일, 7일, 0.4, 0.6, 1.65, 3일)으로 생성해 반환합니다.
+ *     description: 현재 로그인된 점포의 자동 발주 계산 기준 설정을 조회합니다. 설정 행이 없으면 기본값(120일, 7일, 0.4, 0.6, 1.65, 3일)으로 생성해 반환합니다. 실제 발주 계산은 7일 이동평균·예측 기간 1일 고정만 사용하며, 가중치·예측 기간·서비스 계수 설정값은 참고용으로 저장됩니다.
  *     security:
  *       - bearerAuth: []
  *     responses:

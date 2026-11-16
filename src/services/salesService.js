@@ -1,6 +1,7 @@
 const { Op } = require("sequelize");
 const { sequelize } = require("../../config/database");
-const { Sales, StoreInventory, Product } = require("../../models");
+const { Sales, Product } = require("../../models");
+const { decreaseStock } = require("./inventoryService");
 
 const registerSale = async ({
   storeId,
@@ -9,34 +10,13 @@ const registerSale = async ({
   salesDate,
 }) => {
   const result = await sequelize.transaction(async (transaction) => {
-    const inventory = await StoreInventory.findOne({
-      where: { storeId, productId },
+    const inventory = await decreaseStock({
+      storeId,
+      productId,
+      quantity: salesQuantity,
       transaction,
-      lock: true,
     });
-
-    if (!inventory) {
-      const error = new Error("해당 점포에 등록되지 않은 상품입니다.");
-      error.statusCode = 404;
-      error.code = "NOT_FOUND";
-      throw error;
-    }
-
-    if (inventory.currentStock < salesQuantity) {
-      const error = new Error(
-        `재고가 부족합니다. 현재 재고 ${inventory.currentStock}개, 판매 요청 ${salesQuantity}개.`,
-      );
-      error.statusCode = 409;
-      error.code = "INSUFFICIENT_STOCK";
-      throw error;
-    }
-
     const remainingStock = inventory.currentStock - salesQuantity;
-
-    await inventory.decrement("currentStock", {
-      by: salesQuantity,
-      transaction,
-    });
 
     const sale = await Sales.create(
       {

@@ -171,20 +171,24 @@ test("returns auto order recommendations with calculated values", async () => {
     assert.equal(first.incoming_quantity, 0);
     assert.ok(Math.abs(first.predicted_demand - 4) < 1e-9);
     assert.equal(first.lead_time_days, 2);
-    assert.equal(first.forecast_period_days, 3);
-    assert.equal(first.forecast_coverage_days, 3);
+    assert.equal(first.forecast_period_days, 1);
+    assert.equal(first.forecast_coverage_days, 1);
     assert.equal(first.order_unit, 5);
-    assert.equal(first.target_stock, 12);
-    assert.equal(first.order_quantity, 10);
+    assert.equal(first.target_stock, 4);
+    assert.equal(first.raw_order_quantity, 1);
+    assert.equal(first.order_quantity, 5);
     assert.equal(first.needs_order, true);
+    assert.equal(first.applied_safety_stock, 0);
+    assert.equal(first.safety_stock_source, "NOT_APPLIED");
     assert.deepEqual(first.data_warning, []);
 
     const second = response.body.items[1];
     assert.equal(second.product_id, 2);
     assert.equal(second.order_quantity, 0);
     assert.equal(second.needs_order, false);
-    assert.equal(second.applied_safety_stock, 5);
-    assert.equal(second.safety_stock_source, "CONFIGURED");
+    assert.equal(second.configured_safety_stock, 5);
+    assert.equal(second.applied_safety_stock, 0);
+    assert.equal(second.safety_stock_source, "NOT_APPLIED");
     assert.deepEqual(second.data_warning, ["NO_SALES_DATA"]);
 
     assert.equal(salesFindAllCalls.length, 1);
@@ -394,11 +398,12 @@ test("recommendation detail includes calculation basis", async () => {
     assert.equal(response.body.calculation_basis.sales_window_days, 120);
     assert.equal(response.body.calculation_basis.sales_series_days, 7);
     assert.equal(response.body.calculation_basis.moving_average_sample_days, 7);
-    assert.equal(response.body.calculation_basis.forecast_period_days, 3);
-    assert.equal(response.body.calculation_basis.forecast_coverage_days, 3);
-    assert.equal(response.body.calculation_basis.same_weekday_sample_count, 1);
+    assert.equal(response.body.calculation_basis.forecast_period_days, 1);
+    assert.equal(response.body.calculation_basis.forecast_coverage_days, 1);
+    assert.equal(response.body.calculation_basis.same_weekday_sample_count, 0);
     assert.equal(response.body.calculation_basis.recent_daily_sales.length, 7);
     assert.equal(response.body.applied_settings.analysis_period_days, 120);
+    // applied_settings는 저장된 설정값(참고용)이므로 계산에 사용되는 1과 달라도 된다.
     assert.equal(response.body.applied_settings.forecast_period_days, 3);
   } finally {
     StoreInventory.findAll = originalInventoryFindAll;

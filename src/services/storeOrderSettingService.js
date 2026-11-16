@@ -1,4 +1,5 @@
 const { StoreOrderSetting } = require("../../models");
+const { createHttpError } = require("../utils/httpError");
 
 // 점포별 자동 발주 기준 설정의 기본값.
 // 기존 하드코딩 상수(orderCalculator.SERVICE_LEVEL_Z/SALES_WINDOW_DAYS,
@@ -13,13 +14,6 @@ const DEFAULT_ORDER_SETTINGS = {
 };
 
 const WEIGHT_SUM_TOLERANCE = 1e-9;
-
-const createHttpError = (statusCode, code, message) => {
-  const error = new Error(message);
-  error.statusCode = statusCode;
-  error.code = code;
-  return error;
-};
 
 const isPositiveInteger = (value) => Number.isInteger(value) && value >= 1;
 

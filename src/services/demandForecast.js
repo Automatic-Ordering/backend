@@ -1,13 +1,9 @@
-const DEFAULT_WEIGHTS = {
-  movingAverage: 0.4,
-  sameWeekday: 0.6,
-};
-
+// 다음 날 수요 예측: 최근 7일 이동평균만 사용한다.
+// 요일별 이동평균과 가중치 결합, 변동성 기반 보정은 발주 계산에서 제외되었다.
 const MOVING_AVERAGE_WINDOW = 7;
 
 const WARNING_CODES = {
   INSUFFICIENT_MOVING_AVERAGE_WINDOW: "INSUFFICIENT_MOVING_AVERAGE_WINDOW",
-  NO_SAME_WEEKDAY_DATA: "NO_SAME_WEEKDAY_DATA",
 };
 
 const pad = (value) => String(value).padStart(2, "0");
@@ -25,11 +21,6 @@ const parseDateValue = (value) => {
   }
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
-};
-
-const parseLocalDateKey = (key) => {
-  const [year, month, day] = key.split("-").map(Number);
-  return new Date(year, month - 1, day);
 };
 
 const validateEntry = (entry, index) => {
@@ -59,41 +50,14 @@ const validateEntry = (entry, index) => {
   return date;
 };
 
-const resolveWeights = (options) => {
-  const weights = options?.weights ?? DEFAULT_WEIGHTS;
-  const movingAverage = Number(weights?.movingAverage);
-  const sameWeekday = Number(weights?.sameWeekday);
-
-  if (!Number.isFinite(movingAverage) || movingAverage < 0) {
-    throw new Error("이동평균 가중치는 0 이상의 숫자여야 합니다.");
-  }
-  if (!Number.isFinite(sameWeekday) || sameWeekday < 0) {
-    throw new Error("동요일 가중치는 0 이상의 숫자여야 합니다.");
-  }
-
-  const sum = movingAverage + sameWeekday;
-  if (sum <= 0) {
-    throw new Error("가중치 합은 0보다 커야 합니다.");
-  }
-
-  return { movingAverage: movingAverage / sum, sameWeekday: sameWeekday / sum };
+const parseLocalDateKey = (key) => {
+  const [year, month, day] = key.split("-").map(Number);
+  return new Date(year, month - 1, day);
 };
 
-// 이동평균 기간. 점포 설정(moving_average_days)으로 변경할 수 있고,
-// 지정하지 않으면 기존 상수(MOVING_AVERAGE_WINDOW = 7)를 사용한다.
-const resolveMovingAverageDays = (options) => {
-  const days = options?.movingAverageDays;
-  if (days === undefined || days === null) {
-    return MOVING_AVERAGE_WINDOW;
-  }
-  const parsed = Number(days);
-  if (!Number.isInteger(parsed) || parsed < 1) {
-    throw new Error("이동평균 기간은 1 이상의 정수여야 합니다.");
-  }
-  return parsed;
-};
-
-const predictNextDayDemand = (dailySales, options = {}) => {
+// 예상 판매량 = 최근 7일 판매량 합계 / 7.
+// 판매 기록이 없는 날은 0으로 간주하고, 데이터가 7일 미만이어도 항상 7으로 나눈다.
+const predictNextDayDemand = (dailySales) => {
   if (!Array.isArray(dailySales) || dailySales.length === 0) {
     throw new Error("판매 데이터 배열이 비어 있습니다.");
   }
@@ -113,68 +77,32 @@ const predictNextDayDemand = (dailySales, options = {}) => {
   const endDate = parseLocalDateKey(sortedKeys[sortedKeys.length - 1]);
 
   const series = [];
-  const cursor = startDate;
+  const cursor = new Date(startDate.getTime());
   while (cursor <= endDate) {
     const key = formatLocalDate(cursor);
-    series.push({
-      key,
-      quantity: quantityByDate.get(key) ?? 0,
-      weekday: cursor.getDay(),
-    });
+    series.push(quantityByDate.get(key) ?? 0);
     cursor.setDate(cursor.getDate() + 1);
   }
 
   const dataWarning = [];
 
-  const movingAverageDays = resolveMovingAverageDays(options);
-  const windowSize = Math.min(movingAverageDays, series.length);
+  const recentQuantities = series.slice(-MOVING_AVERAGE_WINDOW);
   const movingAverage =
-    series.slice(-windowSize).reduce((sum, day) => sum + day.quantity, 0) /
-    windowSize;
-  if (series.length < movingAverageDays) {
+    recentQuantities.reduce((sum, quantity) => sum + quantity, 0) /
+    MOVING_AVERAGE_WINDOW;
+  if (series.length < MOVING_AVERAGE_WINDOW) {
     dataWarning.push(WARNING_CODES.INSUFFICIENT_MOVING_AVERAGE_WINDOW);
   }
 
-  const targetDate = new Date(endDate);
-  targetDate.setDate(endDate.getDate() + 1);
-  const targetWeekday = targetDate.getDay();
-
-  const weekdayValues = series
-    .filter((day) => day.weekday === targetWeekday)
-    .map((day) => day.quantity);
-
-  let sameWeekdayAverage = null;
-  if (weekdayValues.length > 0) {
-    sameWeekdayAverage =
-      weekdayValues.reduce((sum, quantity) => sum + quantity, 0) /
-      weekdayValues.length;
-  } else {
-    dataWarning.push(WARNING_CODES.NO_SAME_WEEKDAY_DATA);
-  }
-
-  const weights = resolveWeights(options);
-
-  let predictedDemand;
-  if (sameWeekdayAverage === null) {
-    predictedDemand = movingAverage;
-  } else {
-    predictedDemand =
-      weights.movingAverage * movingAverage +
-      weights.sameWeekday * sameWeekdayAverage;
-  }
-  predictedDemand = Math.max(0, predictedDemand);
-
   return {
-    predictedDemand,
+    predictedDemand: Math.max(0, movingAverage),
     movingAverage,
-    sameWeekdayAverage,
     dataWarning,
   };
 };
 
 module.exports = {
   predictNextDayDemand,
-  DEFAULT_WEIGHTS,
   MOVING_AVERAGE_WINDOW,
   WARNING_CODES,
 };

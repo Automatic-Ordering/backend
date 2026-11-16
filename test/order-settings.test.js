@@ -351,7 +351,7 @@ test("PATCH enforces weight sum of 1", async () => {
   }
 });
 
-test("default settings keep legacy calculation results for lead time >= forecast period", () => {
+test("점포 설정값(이동평균 기간/가중치/예측 기간)은 발주 계산에 반영되지 않는다", () => {
   const dailySales = seriesFrom([4, 4, 4, 4, 4, 4, 4]);
   const base = {
     dailySales,
@@ -377,16 +377,15 @@ test("default settings keep legacy calculation results for lead time >= forecast
   assert.equal(legacy.predictedDemand, 4);
   assert.equal(withDefaults.predictedDemand, legacy.predictedDemand);
   assert.equal(withDefaults.movingAverage, legacy.movingAverage);
-  assert.equal(withDefaults.sameWeekdayAverage, legacy.sameWeekdayAverage);
-  assert.equal(withDefaults.computedSafetyStock, legacy.computedSafetyStock);
   assert.equal(withDefaults.targetStock, legacy.targetStock);
   assert.equal(withDefaults.orderQuantity, legacy.orderQuantity);
   assert.deepEqual(withDefaults.dataWarning, legacy.dataWarning);
-  // 리드타임(4)이 예측 기간(3) 이상이면 커버리지도 기존과 동일하다.
-  assert.equal(withDefaults.coverageDays, 4);
+  // 예측 기간은 1일로 고정되어 설정값과 무관하다.
+  assert.equal(withDefaults.coverageDays, 1);
+  assert.equal(legacy.coverageDays, 1);
 });
 
-test("forecast period guarantees minimum coverage below lead time", () => {
+test("예측 기간은 1일로 고정된다 (설정값을 전달해도 무시된다)", () => {
   const dailySales = seriesFrom([4, 4, 4, 4, 4, 4, 4]);
   const result = calculateRecommendation({
     dailySales,
@@ -398,15 +397,15 @@ test("forecast period guarantees minimum coverage below lead time", () => {
     forecastPeriodDays: 3,
   });
 
-  // 커버리지 = max(리드타임 2, 예측 기간 3) = 3 → 목표재고 = ceil(4 × 3) = 12
-  assert.equal(result.coverageDays, 3);
-  assert.equal(result.targetStock, 12);
-  assert.equal(result.orderQuantity, 10);
+  // 커버리지 = 예측 기간 1일 고정 → 목표재고 = ceil(4 × 1) = 4
+  assert.equal(result.coverageDays, 1);
+  assert.equal(result.forecastPeriodDays, 1);
+  assert.equal(result.targetStock, 4);
+  assert.equal(result.orderQuantity, 5);
 });
 
-test("custom settings change the calculation inputs", () => {
-  // 16일 데이터: 10-24~11-01은 2, 11-02~11-03은 8, 11-04~11-08은 6
-  // 예측 대상 요일(11-09, 월요일)의 표본: 10-26(2), 11-02(8) → 동요일 평균 5
+test("커스텀 설정을 전달해도 발주 계산은 7일 이동평균·1일 고정으로 동일하다", () => {
+  // 16일 데이터: 마지막 7일은 8, 8, 6, 6, 6, 6, 6 → 이동평균 46/7
   const dailySales = seriesFrom([
     2, 2, 2, 2, 2, 2, 2, 2, 2, 8, 8, 6, 6, 6, 6, 6,
   ]);
@@ -428,19 +427,15 @@ test("custom settings change the calculation inputs", () => {
     forecastWeights: { movingAverage: 0.7, sameWeekday: 0.3 },
   });
 
-  // 이동평균: 설정 5일 → 6 (기존 7일 → (8+8+6×5)/7)
+  // 이동평균 기간/가중치/예측 기간 설정은 계산에 반영되지 않는다.
   assert.ok(Math.abs(legacy.movingAverage - 46 / 7) < 1e-9);
-  assert.equal(custom.movingAverage, 6);
-  // 예측: 0.7 × 6 + 0.3 × 5 = 5.7 (기존 0.4 × 46/7 + 0.6 × 5)
-  assert.ok(Math.abs(custom.predictedDemand - 5.7) < 1e-9);
-  assert.notEqual(
-    custom.predictedDemand.toFixed(6),
-    legacy.predictedDemand.toFixed(6),
-  );
-  // 서비스 계수 1.8 > 1.65 → 표준편차 > 0 이므로 안전재고 증가 (sqrt(4) = 2)
+  assert.ok(Math.abs(custom.movingAverage - 46 / 7) < 1e-9);
+  assert.ok(Math.abs(custom.predictedDemand - 46 / 7) < 1e-9);
+  assert.equal(custom.sameWeekdayAverage, null);
+  assert.equal(custom.coverageDays, 1);
+  assert.equal(custom.targetStock, legacy.targetStock);
+  assert.equal(custom.orderQuantity, legacy.orderQuantity);
+  // 서비스 계수는 참고용 computed_safety_stock에만 영향을 준다.
   assert.ok(custom.dailyStdDev > 0);
   assert.ok(custom.computedSafetyStock > legacy.computedSafetyStock);
-  // 리드타임 4 ≥ 예측 기간 3 → 커버리지는 동일 (4)
-  assert.equal(custom.coverageDays, 4);
-  assert.ok(custom.targetStock !== legacy.targetStock);
 });

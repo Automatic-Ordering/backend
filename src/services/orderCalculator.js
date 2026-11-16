@@ -2,19 +2,13 @@ const { predictNextDayDemand } = require("./demandForecast");
 
 const SERVICE_LEVEL_Z = 1.65;
 const SALES_WINDOW_DAYS = 120;
+// 발주량 계산에 적용되는 예측 기간. 매일 발주하는 운영 방식으로 1일로 고정한다.
+// 점포 설정의 forecast_period_days는 저장·표시용이며 계산에는 반영되지 않는다.
+const FORECAST_PERIOD_DAYS = 1;
 
 const WARNING_CODES = {
   NO_SALES_DATA: "NO_SALES_DATA",
   INSUFFICIENT_SALES_DATA: "INSUFFICIENT_SALES_DATA",
-};
-
-const assertPositiveInteger = (value, label) => {
-  if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
-    throw new Error(
-      `${label}은(는) 1 이상의 정수여야 합니다. (입력값: ${String(value)})`,
-    );
-  }
-  return value;
 };
 
 const pad = (value) => String(value).padStart(2, "0");
@@ -88,12 +82,6 @@ const validateInputs = (input) => ({
           }
           return z;
         })(),
-  // 예측 기간(점포 설정 forecast_period_days). 지정하지 않으면
-  // 기존 계산식 그대로 상품 리드타임만 커버리지로 사용한다.
-  forecastPeriodDays:
-    input.forecastPeriodDays === undefined || input.forecastPeriodDays === null
-      ? undefined
-      : assertPositiveInteger(input.forecastPeriodDays, "예측 기간"),
 });
 
 const buildDailySeries = (dailySales) => {
@@ -216,6 +204,12 @@ const calculateOrderQuantity = ({
   };
 };
 
+// 발주 추천 계산.
+// - 예상 판매량: 최근 7일 판매량 합계 / 7 (요일별 가중치 결합 없음)
+// - 예측 기간: 1일 고정 → 목표재고 = ceil(예상 판매량)
+// - 발주량 = max(목표재고 - 현재 재고 - 입고 예정 수량, 0), 발주 단위 배수 올림
+// - 변동성(표준편차) 기반 안전재고와 점포 설정 안전재고는 계산에서 제외되며,
+//   computed_safety_stock/configured_safety_stock은 참고용으로만 응답한다.
 const calculateRecommendation = (input = {}) => {
   const {
     currentStock,
@@ -224,37 +218,22 @@ const calculateRecommendation = (input = {}) => {
     orderUnit,
     configuredSafetyStock,
     serviceLevelZ,
-    forecastPeriodDays,
   } = validateInputs(input);
 
   const dailySales = input.dailySales;
   const series = buildDailySeries(dailySales);
   const dataWarning = [];
 
-  // 점포별 예측 설정(이동평균 기간, 예측 가중치). 지정하지 않으면
-  // demandForecast의 기존 기본값(MOVING_AVERAGE_WINDOW=7, DEFAULT_WEIGHTS)을 사용한다.
-  const forecastOptions = {};
-  if (input.movingAverageDays !== undefined && input.movingAverageDays !== null) {
-    forecastOptions.movingAverageDays = assertPositiveInteger(
-      input.movingAverageDays,
-      "이동평균 기간",
-    );
-  }
-  if (input.forecastWeights !== undefined && input.forecastWeights !== null) {
-    forecastOptions.weights = input.forecastWeights;
-  }
-
   let prediction;
   if (!series.length) {
     prediction = {
       predictedDemand: 0,
       movingAverage: 0,
-      sameWeekdayAverage: null,
       dataWarning: [],
     };
     dataWarning.push(WARNING_CODES.NO_SALES_DATA);
   } else {
-    prediction = predictNextDayDemand(dailySales, forecastOptions);
+    prediction = predictNextDayDemand(dailySales);
   }
 
   const stats = calculateDailyStats(series);
@@ -262,29 +241,19 @@ const calculateRecommendation = (input = {}) => {
     dataWarning.push(WARNING_CODES.INSUFFICIENT_SALES_DATA);
   }
 
+  // 참고용 안전재고 계산. 발주량에는 반영되지 않는다.
   const computedSafetyStock = calculateSafetyStock({
     stdDev: stats.stdDev,
     leadTimeDays,
     serviceLevelZ,
   });
+  const appliedSafetyStock = 0;
+  const safetyStockSource = "NOT_APPLIED";
 
-  const hasConfiguredSafetyStock = configuredSafetyStock > 0;
-  const appliedSafetyStock = hasConfiguredSafetyStock
-    ? configuredSafetyStock
-    : computedSafetyStock;
-  const safetyStockSource = hasConfiguredSafetyStock
-    ? "CONFIGURED"
-    : "AUTO_CALCULATED";
+  // 예측 기간은 1일로 고정한다.
+  const coverageDays = FORECAST_PERIOD_DAYS;
 
-  // 목표재고의 수요 커버리지 기간.
-  // 예측 기간이 지정되면 상품 리드타임보다 짧지 않게 보장한다(max).
-  const coverageDays =
-    forecastPeriodDays === undefined
-      ? leadTimeDays
-      : Math.max(leadTimeDays, forecastPeriodDays);
-
-  const targetStock =
-    Math.ceil(prediction.predictedDemand * coverageDays) + appliedSafetyStock;
+  const targetStock = Math.ceil(prediction.predictedDemand * coverageDays);
   const { rawOrderQuantity, orderQuantity } = calculateOrderQuantity({
     targetStock,
     currentStock,
@@ -295,19 +264,18 @@ const calculateRecommendation = (input = {}) => {
   return {
     predictedDemand: prediction.predictedDemand,
     movingAverage: prediction.movingAverage,
-    sameWeekdayAverage: prediction.sameWeekdayAverage,
+    sameWeekdayAverage: null,
     dailyMean: stats.mean,
     dailyStdDev: stats.stdDev,
     salesSeriesDays: series.length,
     serviceLevelZ,
     leadTimeDays,
-    forecastPeriodDays: forecastPeriodDays ?? null,
+    forecastPeriodDays: FORECAST_PERIOD_DAYS,
     coverageDays,
     orderUnit,
     computedSafetyStock,
-    configuredSafetyStock: hasConfiguredSafetyStock
-      ? configuredSafetyStock
-      : null,
+    configuredSafetyStock:
+      configuredSafetyStock > 0 ? configuredSafetyStock : null,
     appliedSafetyStock,
     safetyStockSource,
     targetStock,
@@ -323,6 +291,7 @@ const calculateRecommendation = (input = {}) => {
 module.exports = {
   SERVICE_LEVEL_Z,
   SALES_WINDOW_DAYS,
+  FORECAST_PERIOD_DAYS,
   WARNING_CODES,
   calculateRecommendation,
   calculateSafetyStock,

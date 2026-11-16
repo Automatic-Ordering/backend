@@ -131,6 +131,7 @@ const buildSpecInstance = (overrides = {}) => {
     totalAmount: 0,
     adminId: null,
     approvedAt: null,
+    confirmedAt: null,
     rejectedAt: null,
     rejectionReason: null,
     issuedOrderNumber: null,
@@ -368,9 +369,9 @@ test("creates DRAFT specification from auto order recommendations", async () => 
     assert.equal(response.body.order_status, "DRAFT");
     assert.equal(response.body.items.length, 1);
     assert.equal(response.body.items[0].product_id, 1);
-    assert.equal(response.body.items[0].order_quantity, 10);
-    assert.equal(response.body.items[0].amount, 15000);
-    assert.equal(response.body.total_amount, 15000);
+    assert.equal(response.body.items[0].order_quantity, 5);
+    assert.equal(response.body.items[0].amount, 7500);
+    assert.equal(response.body.total_amount, 7500);
 
     const restoreInventoryCount2 = overrideMethod(
       StoreInventory,
@@ -569,11 +570,15 @@ test("submit moves DRAFT to REQUESTED and records request date", async () => {
   }
 });
 
-test("store confirms REQUESTED specification", async () => {
+test("store confirms DRAFT specification", async () => {
   setStoreAuthMock();
   const restoreTransaction = mockTransaction();
 
-  const spec = buildSpecInstance({ orderSpecId: 101, orderStatus: "REQUESTED" });
+  const spec = buildSpecInstance({
+    orderSpecId: 101,
+    orderStatus: "DRAFT",
+    items: [buildItemInstance({ orderSpecItemId: 1 })],
+  });
   const findOneCalls = [];
   const historyCalls = [];
   const restoreSpecFindOne = overrideMethod(
@@ -599,20 +604,21 @@ test("store confirms REQUESTED specification", async () => {
       .set("Authorization", `Bearer ${storeToken()}`);
 
     assert.equal(response.status, 200);
-    assert.equal(response.body.order_status, "APPROVED");
+    assert.equal(response.body.order_status, "PENDING_RECEIPT");
     assert.equal(response.body.admin_id, null);
-    assert.ok(response.body.approved_at);
+    assert.ok(response.body.confirmed_at);
     assert.equal(findOneCalls[0].where.orderSpecId, 101);
     assert.equal(findOneCalls[0].where.storeId, 1);
-    assert.equal(historyCalls[0].values.fromStatus, "REQUESTED");
-    assert.equal(historyCalls[0].values.toStatus, "APPROVED");
+    assert.equal(historyCalls[0].values.fromStatus, "DRAFT");
+    assert.equal(historyCalls[0].values.toStatus, "PENDING_RECEIPT");
     assert.equal(historyCalls[0].values.changedByAdminId, null);
     assert.equal(historyCalls[0].values.note, "발주 확정");
     assert.ok(historyCalls[0].options.transaction);
 
     const confirmedSpec = buildSpecInstance({
       orderSpecId: 101,
-      orderStatus: "APPROVED",
+      orderStatus: "PENDING_RECEIPT",
+      items: [buildItemInstance({ orderSpecItemId: 1 })],
     });
     const restoreSpecFindOne2 = overrideMethod(
       OrderSpecification,
@@ -631,7 +637,7 @@ test("store confirms REQUESTED specification", async () => {
 
     const otherStoreSpec = buildSpecInstance({
       orderSpecId: 999,
-      orderStatus: "REQUESTED",
+      orderStatus: "DRAFT",
     });
     const restoreSpecFindOne3 = overrideMethod(
       OrderSpecification,
@@ -647,7 +653,7 @@ test("store confirms REQUESTED specification", async () => {
         .post("/api/store/orders/specs/999/confirm")
         .set("Authorization", `Bearer ${storeToken()}`);
       assert.equal(notFound.status, 404);
-      assert.equal(otherStoreSpec.orderStatus, "REQUESTED");
+      assert.equal(otherStoreSpec.orderStatus, "DRAFT");
     } finally {
       restoreSpecFindOne3();
     }
@@ -777,7 +783,7 @@ test("store list is scoped and detail blocks other stores", async () => {
       .get("/api/store/orders/specs/pending-receipts")
       .set("Authorization", `Bearer ${storeToken()}`);
     assert.equal(pendingReceipts.status, 200);
-    assert.equal(findAllCalls[1].where.orderStatus, "APPROVED");
+    assert.equal(findAllCalls[1].where.orderStatus, "PENDING_RECEIPT");
     assert.equal(findAllCalls[1].where.storeId, 1);
 
     const invalidStatus = await request(app)
@@ -830,14 +836,16 @@ test("receipt completes order and increases store inventory", async () => {
   });
   const spec = buildSpecInstance({
     orderSpecId: 101,
-    orderStatus: "APPROVED",
+    orderStatus: "PENDING_RECEIPT",
     items: [item1, item2],
   });
 
+  let receiptFindOneArgs;
   const restoreSpecFindOne = overrideMethod(
     OrderSpecification,
     "findOne",
     async (args) => {
+      receiptFindOneArgs = args;
       assert.equal(args.where.orderSpecId, 101);
       assert.equal(args.where.storeId, 1);
       return spec;
@@ -887,15 +895,20 @@ test("receipt completes order and increases store inventory", async () => {
     assert.equal(response.body.comparison[1].difference, 0);
     assert.equal(response.body.items[0].received_quantity, 8);
 
+    assert.equal(receiptFindOneArgs.lock, true);
+    assert.ok(receiptFindOneArgs.transaction);
     assert.equal(incrementCalls.length, 2);
     assert.equal(incrementCalls[0].field, "currentStock");
     assert.equal(incrementCalls[0].options.by, 8);
     assert.deepEqual(incrementCalls[0].where, { storeId: 1, productId: 1 });
     assert.equal(incrementCalls[1].options.by, 4);
     assert.equal(item1.saveCalls.length, 1);
+    assert.ok(item1.saveCalls[0].transaction);
     assert.equal(item1.receivedQuantity, 8);
+    assert.equal(historyCalls[0].fromStatus, "PENDING_RECEIPT");
     assert.equal(historyCalls[0].toStatus, "RECEIVED");
     assert.equal(historyCalls[0].changedByAdminId, null);
+    assert.equal(historyCalls[0].note, "입고 완료");
   } finally {
     restoreSpecFindOne();
     restoreInventoryFindOne();
@@ -933,7 +946,7 @@ test("duplicate receipt and invalid receipt inputs are blocked", async () => {
 
   const approvedSpec = buildSpecInstance({
     orderSpecId: 102,
-    orderStatus: "APPROVED",
+    orderStatus: "PENDING_RECEIPT",
     items: [
       buildItemInstance({ orderSpecItemId: 1, productId: 1 }),
       buildItemInstance({
@@ -957,6 +970,19 @@ test("duplicate receipt and invalid receipt inputs are blocked", async () => {
       .send({ items: [{ product_id: 1, received_quantity: 5 }] });
     assert.equal(missingItem.status, 400);
     assert.match(missingItem.body.message, /누락/);
+
+    const unexpectedItem = await request(app)
+      .post("/api/store/orders/specs/102/receipt")
+      .set("Authorization", `Bearer ${storeToken()}`)
+      .send({
+        items: [
+          { product_id: 1, received_quantity: 5 },
+          { product_id: 2, received_quantity: 1 },
+          { product_id: 999, received_quantity: 1 },
+        ],
+      });
+    assert.equal(unexpectedItem.status, 400);
+    assert.match(unexpectedItem.body.message, /없는 상품/);
 
     const negativeQuantity = await request(app)
       .post("/api/store/orders/specs/102/receipt")
@@ -1004,7 +1030,7 @@ test("receipt failure rolls back the transaction", async () => {
 
   const spec = buildSpecInstance({
     orderSpecId: 101,
-    orderStatus: "APPROVED",
+    orderStatus: "PENDING_RECEIPT",
     items: [buildItemInstance({ orderSpecItemId: 1, productId: 1 })],
   });
   const restoreSpecFindOne = overrideMethod(
@@ -1033,12 +1059,43 @@ test("receipt failure rolls back the transaction", async () => {
     assert.equal(getCapturedRollbackCount(), 1);
     assert.equal(getCapturedCommitCount(), 0);
     assert.equal(spec.saveCalls.length, 0);
-    assert.equal(spec.orderStatus, "APPROVED");
+    assert.equal(spec.orderStatus, "PENDING_RECEIPT");
     assert.equal(spec.receivedAt, null);
   } finally {
     restoreSpecFindOne();
     restoreInventoryFindOne();
     sequelize.transaction = originalTransaction;
+  }
+});
+
+test("receipt accepts only PENDING_RECEIPT specifications", async () => {
+  setStoreAuthMock();
+  const restoreTransaction = mockTransaction();
+  const specs = new Map([
+    ["101", buildSpecInstance({ orderSpecId: 101, orderStatus: "DRAFT" })],
+    ["102", buildSpecInstance({ orderSpecId: 102, orderStatus: "APPROVED" })],
+    ["103", buildSpecInstance({ orderSpecId: 103, orderStatus: "ORDERED" })],
+  ]);
+  const restoreSpecFindOne = overrideMethod(
+    OrderSpecification,
+    "findOne",
+    async ({ where }) => specs.get(String(where.orderSpecId)),
+  );
+
+  try {
+    for (const specId of specs.keys()) {
+      const response = await request(app)
+        .post(`/api/store/orders/specs/${specId}/receipt`)
+        .set("Authorization", `Bearer ${storeToken()}`)
+        .send({ items: [{ product_id: 1, received_quantity: 1 }] });
+
+      assert.equal(response.status, 409);
+      assert.equal(response.body.error, "INVALID_SPEC_STATUS");
+      assert.equal(specs.get(specId).updateCalls.length, 0);
+    }
+  } finally {
+    restoreSpecFindOne();
+    restoreTransaction();
   }
 });
 

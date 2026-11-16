@@ -110,7 +110,7 @@ router.post("/", async (req, res, next) => {
  *       - in: query
  *         name: status
  *         required: false
- *         schema: { type: string, enum: [DRAFT, REQUESTED, APPROVED, REJECTED, ORDERED, RECEIVED, CANCELLED] }
+ *         schema: { type: string, enum: [DRAFT, PENDING_RECEIPT, REQUESTED, APPROVED, REJECTED, ORDERED, RECEIVED, CANCELLED] }
  *       - in: query
  *         name: page
  *         required: false
@@ -131,7 +131,7 @@ router.get("/", async (req, res, next) => {
     return res.status(400).json({
       error: "INVALID_INPUT",
       message:
-        "status는 DRAFT, REQUESTED, APPROVED, REJECTED, ORDERED, RECEIVED, CANCELLED 중 하나여야 합니다.",
+        "status는 DRAFT, PENDING_RECEIPT, REQUESTED, APPROVED, REJECTED, ORDERED, RECEIVED, CANCELLED 중 하나여야 합니다.",
     });
   }
 
@@ -171,7 +171,7 @@ router.get("/", async (req, res, next) => {
  *     tags:
  *       - Store Order Specs
  *     summary: 입고 대기 발주 목록 조회
- *     description: 발주 확정이 완료된(APPROVED) 입고 대기 명세서 목록을 조회합니다.
+ *     description: 점주가 발주를 확정한(PENDING_RECEIPT) 입고 대기 명세서 목록을 조회합니다.
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -202,7 +202,7 @@ router.get("/pending-receipts", async (req, res, next) => {
 
   try {
     const { specs, total } = await getOrderSpecs(req.user.storeId, {
-      status: "APPROVED",
+      status: "PENDING_RECEIPT",
       page: pagination.page,
       limit: pagination.limit,
     });
@@ -372,7 +372,7 @@ router.post("/:specId/submit", async (req, res, next) => {
  *     tags:
  *       - Store Order Specs
  *     summary: 발주 확정
- *     description: 점포가 승인 대기(REQUESTED) 명세서의 요청 내역을 확인하고 발주를 확정(APPROVED)합니다. 확정 일시가 기록되며 이후 입고 처리만 가능합니다.
+ *     description: 점포가 작성 중(DRAFT)인 명세서를 확정하고 입고 대기(PENDING_RECEIPT) 상태로 변경합니다. 확정 시 재고는 변경되지 않습니다.
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -381,7 +381,7 @@ router.post("/:specId/submit", async (req, res, next) => {
  *         required: true
  *         schema: { type: integer, minimum: 1 }
  *     responses:
- *       '200': { description: 확정 완료 (APPROVED) }
+ *       '200': { description: 확정 완료 (PENDING_RECEIPT) }
  *       '404': { description: 발주 명세서를 찾을 수 없습니다. }
  *       '409': { description: 허용되지 않는 상태 전이입니다. }
  *       '401': { description: 점포 인증이 필요합니다. }
@@ -451,7 +451,7 @@ router.post("/:specId/cancel", async (req, res, next) => {
  *       - Store Order Specs
  *     summary: 입고 처리
  *     description: |
- *       발주 확정 완료(APPROVED) 명세서의 실제 입고 수량을 입력해 입고를 완료(RECEIVED) 처리합니다.
+ *       발주 확정 완료(PENDING_RECEIPT) 명세서의 실제 입고 수량을 입력해 입고를 완료(RECEIVED) 처리합니다.
  *       처리 시 트랜잭션으로 점포 재고(StoreInventory)가 실제 입고 수량만큼 증가하며, 주문 수량과 입고 수량 비교 결과를 반환합니다.
  *       중복 입고는 차단됩니다. 명세서의 모든 상품에 대한 입고 수량 입력이 필요합니다.
  *     security:

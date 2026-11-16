@@ -11,7 +11,12 @@ const {
   calculateRecommendation,
   buildDailySeries,
   SALES_WINDOW_DAYS,
+  FORECAST_PERIOD_DAYS,
 } = require("./orderCalculator");
+const { MOVING_AVERAGE_WINDOW } = require("./demandForecast");
+const { increaseStock } = require("./inventoryService");
+const { createHttpError } = require("../utils/httpError");
+const { validateConfirmItems } = require("../utils/orderValidation");
 const {
   getStoreOrderSettings,
   serializeSetting,
@@ -28,13 +33,6 @@ const pad = (value) => String(value).padStart(2, "0");
 
 const formatLocalDate = (date) =>
   `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-
-const createHttpError = (statusCode, code, message) => {
-  const error = new Error(message);
-  error.statusCode = statusCode;
-  error.code = code;
-  return error;
-};
 
 // 판매 분석 기간은 점포 설정(analysis_period_days)으로 대체 가능하다.
 // 설정이 없으면 기존 상수(SALES_WINDOW_DAYS = 120)를 사용한다.
@@ -155,16 +153,11 @@ const getRegisteredInventories = async (storeId, { productId } = {}) => {
 };
 
 // 점포 설정을 계산 입력으로 변환한다.
-// analysis_period_days는 판매 조회 기간에, moving_average_days/weights/
-// service_factor/forecast_period_days는 calculateRecommendation에 전달된다.
+// analysis_period_days는 판매 조회 기간에, service_factor는 참고용 안전재고 계산에
+// 사용된다. moving_average_days/가중치/forecast_period_days는 발주 계산에
+// 반영되지 않는다(7일 이동평균·예측 기간 1일 고정).
 const buildCalculationOptions = (settings) => ({
   serviceLevelZ: Number(settings.serviceFactor),
-  movingAverageDays: settings.movingAverageDays,
-  forecastPeriodDays: settings.forecastPeriodDays,
-  forecastWeights: {
-    movingAverage: Number(settings.movingAverageWeight),
-    sameWeekday: Number(settings.sameWeekdayWeight),
-  },
 });
 
 const getOrderRecommendations = async (
@@ -302,29 +295,6 @@ const getRecommendationDetail = async (storeId, productId) => {
     configuredSafetyStock: inventory.safetyStock,
     ...calculationOptions,
   });
-
-  const lastSaleDate = series.length ? series[series.length - 1].key : null;
-  const targetWeekday = lastSaleDate
-    ? (() => {
-        const [year, month, day] = lastSaleDate.split("-").map(Number);
-        const nextDay = new Date(year, month - 1, day + 1);
-        return nextDay.getDay();
-      })()
-    : null;
-
-  const sameWeekdaySampleCount =
-    targetWeekday === null
-      ? 0
-      : series.filter((entry) => {
-          const entryDate = (() => {
-            const [entryYear, entryMonth, entryDay] = entry.key
-              .split("-")
-              .map(Number);
-            return new Date(entryYear, entryMonth - 1, entryDay);
-          })();
-          return entryDate.getDay() === targetWeekday;
-        }).length;
-
   return {
     ...serializeRecommendation(
       product,
@@ -336,12 +306,12 @@ const getRecommendationDetail = async (storeId, productId) => {
       sales_window_days: settings.analysisPeriodDays,
       sales_series_days: series.length,
       moving_average_sample_days: Math.min(
-        settings.movingAverageDays,
+        MOVING_AVERAGE_WINDOW,
         series.length,
       ),
-      forecast_period_days: settings.forecastPeriodDays,
+      forecast_period_days: FORECAST_PERIOD_DAYS,
       forecast_coverage_days: recommendation.coverageDays,
-      same_weekday_sample_count: sameWeekdaySampleCount,
+      same_weekday_sample_count: 0,
       recent_daily_sales: series.slice(-14).map((entry) => ({
         date: entry.key,
         quantity: entry.quantity,
@@ -349,47 +319,6 @@ const getRecommendationDetail = async (storeId, productId) => {
     },
     applied_settings: serializeSetting(settings),
   };
-};
-
-const validateConfirmItems = (items) => {
-  if (!Array.isArray(items) || items.length === 0) {
-    throw createHttpError(
-      400,
-      "INVALID_INPUT",
-      "발주할 상품 목록(items)이 비어 있거나 올바르지 않습니다.",
-    );
-  }
-
-  const seenProductIds = new Set();
-  const normalized = items.map((item, index) => {
-    const productId = Number(item?.product_id);
-    const quantity = Number(item?.quantity);
-    if (!Number.isInteger(productId) || productId <= 0) {
-      throw createHttpError(
-        400,
-        "INVALID_INPUT",
-        `items[${index}].product_id는 1 이상의 정수여야 합니다.`,
-      );
-    }
-    if (!Number.isInteger(quantity) || quantity < 1) {
-      throw createHttpError(
-        400,
-        "INVALID_INPUT",
-        `items[${index}].quantity는 1 이상의 정수여야 합니다.`,
-      );
-    }
-    if (seenProductIds.has(productId)) {
-      throw createHttpError(
-        400,
-        "INVALID_INPUT",
-        `중복된 상품이 포함되어 있습니다. (product_id=${productId})`,
-      );
-    }
-    seenProductIds.add(productId);
-    return { productId, quantity };
-  });
-
-  return normalized;
 };
 
 const confirmOrders = async (storeId, items) => {
@@ -522,22 +451,23 @@ const updateOrderStatus = async (orderId, nextStatus) => {
 
       let increased = false;
       if (nextStatus === "COMPLETED") {
-        const inventory = await StoreInventory.findOne({
-          where: { storeId: target.storeId, productId: target.productId },
-          transaction,
-          lock: true,
-        });
-        if (!inventory) {
-          throw createHttpError(
-            409,
-            "INVALID_ORDER_STATUS",
-            "재고 정보가 없어 입고 완료 처리를 할 수 없습니다.",
-          );
+        try {
+          await increaseStock({
+            storeId: target.storeId,
+            productId: target.productId,
+            quantity: target.orderQuantity,
+            transaction,
+          });
+        } catch (error) {
+          if (error.code === "NOT_FOUND") {
+            throw createHttpError(
+              409,
+              "INVALID_ORDER_STATUS",
+              "재고 정보가 없어 입고 완료 처리를 할 수 없습니다.",
+            );
+          }
+          throw error;
         }
-        await inventory.increment("currentStock", {
-          by: target.orderQuantity,
-          transaction,
-        });
         increased = true;
       }
 

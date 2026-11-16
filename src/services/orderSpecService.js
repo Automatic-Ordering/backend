@@ -8,9 +8,17 @@ const {
   StoreInventory,
 } = require("../../models");
 const { getOrderRecommendations } = require("./orderService");
+const { increaseStock } = require("./inventoryService");
+const { createHttpError } = require("../utils/httpError");
+const {
+  validateOrderItems,
+  validateReceivedItems,
+  MAX_ORDER_ITEMS,
+} = require("../utils/orderValidation");
 
 const SPEC_STATUSES = [
   "DRAFT",
+  "PENDING_RECEIPT",
   "REQUESTED",
   "APPROVED",
   "REJECTED",
@@ -20,7 +28,8 @@ const SPEC_STATUSES = [
 ];
 
 const SPEC_STATUS_TRANSITIONS = {
-  DRAFT: ["REQUESTED", "CANCELLED"],
+  DRAFT: ["PENDING_RECEIPT", "REQUESTED", "CANCELLED"],
+  PENDING_RECEIPT: ["RECEIVED"],
   REQUESTED: ["APPROVED", "CANCELLED"],
   APPROVED: ["RECEIVED", "CANCELLED"],
   REJECTED: [],
@@ -29,17 +38,9 @@ const SPEC_STATUS_TRANSITIONS = {
   CANCELLED: [],
 };
 
-const MAX_SPEC_ITEMS = 500;
 const RECOMMENDATION_PAGE_LIMIT = 100;
 
 const pad = (value) => String(value).padStart(2, "0");
-
-const createHttpError = (statusCode, code, message) => {
-  const error = new Error(message);
-  error.statusCode = statusCode;
-  error.code = code;
-  return error;
-};
 
 const roundAmount = (value) => Math.round(value * 100) / 100;
 
@@ -79,51 +80,8 @@ const applyTransition = async (
   return { spec, history };
 };
 
-const normalizeSpecItems = (items) => {
-  if (!Array.isArray(items) || items.length === 0) {
-    throw createHttpError(
-      400,
-      "INVALID_INPUT",
-      "발주 항목(items)은 1개 이상의 배열이어야 합니다.",
-    );
-  }
-  if (items.length > MAX_SPEC_ITEMS) {
-    throw createHttpError(
-      400,
-      "INVALID_INPUT",
-      `items는 한 번에 최대 ${MAX_SPEC_ITEMS}개까지 발주할 수 있습니다.`,
-    );
-  }
-
-  const seenProductIds = new Set();
-  return items.map((item, index) => {
-    const productId = Number(item?.product_id);
-    const quantity = Number(item?.quantity);
-    if (!Number.isInteger(productId) || productId <= 0) {
-      throw createHttpError(
-        400,
-        "INVALID_INPUT",
-        `items[${index}].product_id는 1 이상의 정수여야 합니다.`,
-      );
-    }
-    if (!Number.isInteger(quantity) || quantity < 1) {
-      throw createHttpError(
-        400,
-        "INVALID_INPUT",
-        `items[${index}].quantity는 1 이상의 정수여야 합니다.`,
-      );
-    }
-    if (seenProductIds.has(productId)) {
-      throw createHttpError(
-        400,
-        "INVALID_INPUT",
-        `중복된 상품이 포함되어 있습니다. (product_id=${productId})`,
-      );
-    }
-    seenProductIds.add(productId);
-    return { productId, quantity };
-  });
-};
+const normalizeSpecItems = (items) =>
+  validateOrderItems(items, { maxItems: MAX_ORDER_ITEMS });
 
 const resolveSpecItems = async (storeId, normalizedItems) => {
   const inventories = await StoreInventory.findAll({
@@ -217,6 +175,7 @@ const serializeSpec = (spec, { includeItems = false } = {}) => ({
   total_amount: Number(spec.totalAmount),
   admin_id: spec.adminId ?? null,
   approved_at: spec.approvedAt,
+  confirmed_at: spec.confirmedAt,
   rejected_at: spec.rejectedAt,
   rejection_reason: spec.rejectionReason,
   issued_order_number: spec.issuedOrderNumber,
@@ -391,6 +350,7 @@ const confirmOrderSpec = async (storeId, orderSpecId) =>
   sequelize.transaction(async (transaction) => {
     const spec = await OrderSpecification.findOne({
       where: { orderSpecId, storeId },
+      include: [{ model: OrderSpecificationItem, as: "items" }],
       transaction,
       lock: true,
     });
@@ -398,52 +358,38 @@ const confirmOrderSpec = async (storeId, orderSpecId) =>
       throw createHttpError(404, "NOT_FOUND", "발주 명세서를 찾을 수 없습니다.");
     }
 
-    const { spec: updated } = await applyTransition(spec, "APPROVED", {
+    if (!spec.items || spec.items.length === 0) {
+      throw createHttpError(
+        400,
+        "INVALID_INPUT",
+        "발주 항목이 없어 확정할 수 없습니다.",
+      );
+    }
+
+    const invalidItem = spec.items.find(
+      (item) =>
+        !Number.isInteger(Number(item.productId)) ||
+        Number(item.productId) <= 0 ||
+        !Number.isInteger(Number(item.orderQuantity)) ||
+        Number(item.orderQuantity) < 1,
+    );
+    if (invalidItem) {
+      throw createHttpError(
+        400,
+        "INVALID_INPUT",
+        "발주 상품과 수량이 올바르지 않습니다.",
+      );
+    }
+
+    const { spec: updated } = await applyTransition(spec, "PENDING_RECEIPT", {
       transaction,
       note: "발주 확정",
-      extraFields: { approvedAt: new Date() },
+      extraFields: { confirmedAt: new Date() },
     });
     return serializeSpec(updated);
   });
 
-const normalizeReceivedItems = (items) => {
-  if (!Array.isArray(items) || items.length === 0) {
-    throw createHttpError(
-      400,
-      "INVALID_INPUT",
-      "입고 수량 목록(items)은 1개 이상의 배열이어야 합니다.",
-    );
-  }
-
-  const seenProductIds = new Set();
-  return items.map((item, index) => {
-    const productId = Number(item?.product_id);
-    const receivedQuantity = Number(item?.received_quantity);
-    if (!Number.isInteger(productId) || productId <= 0) {
-      throw createHttpError(
-        400,
-        "INVALID_INPUT",
-        `items[${index}].product_id는 1 이상의 정수여야 합니다.`,
-      );
-    }
-    if (!Number.isInteger(receivedQuantity) || receivedQuantity < 0) {
-      throw createHttpError(
-        400,
-        "INVALID_INPUT",
-        `items[${index}].received_quantity는 0 이상의 정수여야 합니다.`,
-      );
-    }
-    if (seenProductIds.has(productId)) {
-      throw createHttpError(
-        400,
-        "INVALID_INPUT",
-        `중복된 상품이 포함되어 있습니다. (product_id=${productId})`,
-      );
-    }
-    seenProductIds.add(productId);
-    return { productId, receivedQuantity };
-  });
-};
+const normalizeReceivedItems = validateReceivedItems;
 
 const receiveOrderSpec = async (storeId, orderSpecId, items) => {
   const normalizedItems = normalizeReceivedItems(items);
@@ -468,7 +414,13 @@ const receiveOrderSpec = async (storeId, orderSpecId, items) => {
         "이미 입고 처리가 완료된 발주입니다.",
       );
     }
-    assertTransition(spec.orderStatus, "RECEIVED");
+    if (spec.orderStatus !== "PENDING_RECEIPT") {
+      throw createHttpError(
+        409,
+        "INVALID_SPEC_STATUS",
+        `${spec.orderStatus} 상태의 발주는 입고 처리할 수 없습니다.`,
+      );
+    }
 
     const specItems = spec.items ?? [];
     if (specItems.length === 0) {
@@ -490,26 +442,39 @@ const receiveOrderSpec = async (storeId, orderSpecId, items) => {
       );
     }
 
+    const specProductIds = new Set(specItems.map((item) => item.productId));
+    const unexpectedItem = normalizedItems.find(
+      (item) => !specProductIds.has(item.productId),
+    );
+    if (unexpectedItem) {
+      throw createHttpError(
+        400,
+        "INVALID_INPUT",
+        `발주 명세서에 없는 상품입니다. (product_id=${unexpectedItem.productId})`,
+      );
+    }
+
     const comparison = [];
     for (const item of specItems) {
       const receivedQuantity = receivedQuantityByProductId.get(item.productId);
       if (receivedQuantity > 0) {
-        const inventory = await StoreInventory.findOne({
-          where: { storeId: spec.storeId, productId: item.productId },
-          transaction,
-          lock: true,
-        });
-        if (!inventory) {
-          throw createHttpError(
-            409,
-            "INVENTORY_NOT_FOUND",
-            "재고 정보가 없어 입고 처리를 할 수 없습니다.",
-          );
+        try {
+          await increaseStock({
+            storeId: spec.storeId,
+            productId: item.productId,
+            quantity: receivedQuantity,
+            transaction,
+          });
+        } catch (error) {
+          if (error.code === "NOT_FOUND") {
+            throw createHttpError(
+              409,
+              "INVENTORY_NOT_FOUND",
+              "재고 정보가 없어 입고 처리를 할 수 없습니다.",
+            );
+          }
+          throw error;
         }
-        await inventory.increment("currentStock", {
-          by: receivedQuantity,
-          transaction,
-        });
       }
 
       item.receivedQuantity = receivedQuantity;

@@ -3,6 +3,7 @@ const { sequelize } = require("../config/database");
 
 const SPEC_STATUSES = [
   "DRAFT",
+  "PENDING_RECEIPT",
   "REQUESTED",
   "APPROVED",
   "REJECTED",
@@ -58,6 +59,11 @@ OrderSpecification.init(
       type: DataTypes.DATE,
       allowNull: true,
       field: "approved_at",
+    },
+    confirmedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      field: "confirmed_at",
     },
     rejectedAt: {
       type: DataTypes.DATE,

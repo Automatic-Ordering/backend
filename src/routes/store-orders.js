@@ -38,7 +38,7 @@ const getConfirmInputError = (body) => {
  *     tags:
  *       - Store Orders
  *     summary: 자동 발주 추천 목록 조회
- *     description: 로그인된 점포에 등록된 상품별로 수요 예측(점포 설정의 이동평균 기간/예측 가중치/서비스 계수/예측 기간 적용, 기본값 7일 이동평균 0.4 + 동일 요일 평균 0.6), 안전재고, 목표재고, 추천 발주량을 계산해 반환합니다. 판매 분석 기간도 점포 설정(기본 120일)을 따릅니다. page/limit으로 페이지네이션되며, search로 상품명·카테고리를 필터링합니다. 판매 데이터 부족 시 data_warning에 경고 코드를 포함합니다.
+ *     description: 로그인된 점포에 등록된 상품별로 최근 7일 판매량 합계/7(7일 이동평균)을 예상 판매량으로 사용해 추천 발주량을 계산합니다. 예측 기간은 1일로 고정되고, 발주량 = max(예상 판매량 - 현재 재고 - 입고 예정 수량, 0)을 발주 단위 배수로 올림합니다. 요일별 이동평균·변동성 기반 안전재고·점포 설정 안전재고는 발주 계산에서 제외됩니다(applied_safety_stock은 항상 0, computed/configured_safety_stock은 참고용). 판매 분석 기간은 점포 설정(기본 120일)을 따릅니다. page/limit으로 페이지네이션되며, search로 상품명·카테고리를 필터링합니다. 판매 데이터 부족 시 data_warning에 경고 코드를 포함합니다.
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -75,19 +75,21 @@ const getConfirmInputError = (body) => {
  *                       category: { type: string, example: '삼각김밥 / 샌드위치' }
  *                       current_stock: { type: integer, example: 3 }
  *                       incoming_quantity: { type: integer, description: 입고 예정 수량 (legacy orders PENDING/ORDERED + 발주 명세서 REQUESTED/APPROVED 합계), example: 0 }
- *                       predicted_demand: { type: number, description: 다음 날 예상 판매량, example: 8.2 }
- *                       moving_average: { type: number, example: 10 }
- *                       same_weekday_average: { type: number, nullable: true, example: 7 }
- *                       daily_std_dev: { type: number, description: 일일 판매량 표본 표준편차, example: 2.44 }
- *                       sales_series_days: { type: integer, description: 계산에 사용된 판매 데이터 일수, example: 120 }
+ *                       predicted_demand: { type: number, description: 다음 날 예상 판매량 (최근 7일 판매량 합계 / 7), example: 4 }
+ *                       moving_average: { type: number, description: 7일 이동평균, example: 4 }
+ *                       same_weekday_average: { type: number, nullable: true, description: 요일별 이동평균은 계산에서 제외되어 항상 null, example: null }
+ *                       daily_std_dev: { type: number, description: 일일 판매량 표본 표준편차 (참고용), example: 0 }
+ *                       sales_series_days: { type: integer, description: 계산에 사용된 판매 데이터 일수, example: 7 }
  *                       service_level_z: { type: number, example: 1.65 }
- *                       lead_time_days: { type: integer, example: 2 }
+ *                       lead_time_days: { type: integer, description: 상품 리드타임 (발주 계산 미반영, 참고용), example: 2 }
+ *                       forecast_period_days: { type: integer, description: 예측 기간 (1일 고정), example: 1 }
+ *                       forecast_coverage_days: { type: integer, description: 목표재고 커버리지 일수 (예측 기간과 동일, 1일 고정), example: 1 }
  *                       order_unit: { type: integer, example: 5 }
- *                       computed_safety_stock: { type: integer, description: 자동 계산 안전재고, example: 4 }
- *                       configured_safety_stock: { type: integer, nullable: true, description: 점포 설정 안전재고 (0이면 null), example: 6 }
- *                       applied_safety_stock: { type: integer, example: 6 }
- *                       safety_stock_source: { type: string, enum: [CONFIGURED, AUTO_CALCULATED], example: CONFIGURED }
- *                       target_stock: { type: integer, description: 목표재고, example: 14 }
+ *                       computed_safety_stock: { type: integer, description: 자동 계산 안전재고 (참고용, 발주 계산 미반영), example: 0 }
+ *                       configured_safety_stock: { type: integer, nullable: true, description: 점포 설정 안전재고 (0이면 null, 발주 계산 미반영), example: null }
+ *                       applied_safety_stock: { type: integer, description: 발주 계산에 반영된 안전재고 (항상 0), example: 0 }
+ *                       safety_stock_source: { type: string, enum: [NOT_APPLIED], example: NOT_APPLIED }
+ *                       target_stock: { type: integer, description: 목표재고 = ceil(예상 판매량 × 예측 기간 1일), example: 4 }
  *                       raw_order_quantity: { type: integer, example: 11 }
  *                       order_quantity: { type: integer, description: 추천 발주량 (발주 단위 배수 올림), example: 15 }
  *                       needs_order: { type: boolean, example: true }
@@ -145,7 +147,7 @@ router.get("/recommendations", async (req, res, next) => {
  *     tags:
  *       - Store Orders
  *     summary: 발주 추천 상세 조회
- *     description: 상품 하나의 계산 근거(판매 데이터 요약, 최근 14일 일별 판매량, 표본 수)를 포함해 반환합니다.
+ *     description: 상품 하나의 계산 근거(판매 데이터 요약, 최근 14일 일별 판매량, 표본 수)를 포함해 반환합니다. 발주 계산은 7일 이동평균과 예측 기간 1일 고정만 사용하며, applied_settings는 저장된 점포 설정값(참고용)입니다.
  *     security:
  *       - bearerAuth: []
  *     parameters:
