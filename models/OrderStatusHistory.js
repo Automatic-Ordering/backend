@@ -42,6 +42,9 @@ OrderStatusHistory.init(
     sequelize,
     modelName: "OrderStatusHistory",
     tableName: "order_status_histories",
+    timestamps: true,
+    createdAt: "created_at",
+    updatedAt: false,
   },
 );
 
