@@ -1,5 +1,3 @@
-const assert = require("node:assert/strict");
-const test = require("node:test");
 const {
   SERVICE_LEVEL_Z,
   FORECAST_PERIOD_DAYS,
@@ -8,10 +6,10 @@ const {
   calculateSafetyStock,
   calculateOrderQuantity,
   calculateDailyStats,
-} = require("../src/services/orderCalculator");
+} = require("../../src/services/orderCalculator");
 const {
   WARNING_CODES: FORECAST_WARNING_CODES,
-} = require("../src/services/demandForecast");
+} = require("../../src/services/demandForecast");
 
 const seriesFrom = (quantities, endDate = "2026-11-08") => {
   const end = new Date(`${endDate}T00:00:00`);
@@ -35,21 +33,21 @@ test("calculateRecommendation: 7일 연속 동일 판매량 데이터로 계산"
     configuredSafetyStock: 0,
   });
 
-  assert.equal(result.predictedDemand, 4);
-  assert.equal(result.movingAverage, 4);
-  assert.equal(result.sameWeekdayAverage, null);
-  assert.equal(result.dailyStdDev, 0);
-  assert.equal(result.salesSeriesDays, 7);
-  assert.equal(result.computedSafetyStock, 0);
-  assert.equal(result.configuredSafetyStock, null);
-  assert.equal(result.appliedSafetyStock, 0);
-  assert.equal(result.safetyStockSource, "NOT_APPLIED");
-  assert.equal(result.forecastPeriodDays, 1);
-  assert.equal(result.coverageDays, 1);
-  assert.equal(result.targetStock, 4);
-  assert.equal(result.orderQuantity, 5);
-  assert.equal(result.needsOrder, true);
-  assert.deepEqual(result.dataWarning, []);
+  expect(result.predictedDemand).toBe(4);
+  expect(result.movingAverage).toBe(4);
+  expect(result.sameWeekdayAverage).toBeNull();
+  expect(result.dailyStdDev).toBe(0);
+  expect(result.salesSeriesDays).toBe(7);
+  expect(result.computedSafetyStock).toBe(0);
+  expect(result.configuredSafetyStock).toBeNull();
+  expect(result.appliedSafetyStock).toBe(0);
+  expect(result.safetyStockSource).toBe("NOT_APPLIED");
+  expect(result.forecastPeriodDays).toBe(1);
+  expect(result.coverageDays).toBe(1);
+  expect(result.targetStock).toBe(4);
+  expect(result.orderQuantity).toBe(5);
+  expect(result.needsOrder).toBe(true);
+  expect(result.dataWarning).toEqual([]);
 });
 
 test("calculateRecommendation: 예상 판매량은 최근 7일 합계/7", () => {
@@ -62,10 +60,10 @@ test("calculateRecommendation: 예상 판매량은 최근 7일 합계/7", () => 
     orderUnit: 1,
   });
 
-  assert.equal(result.predictedDemand, 28 / 7);
-  assert.equal(result.movingAverage, 28 / 7);
-  assert.equal(result.targetStock, 4);
-  assert.equal(result.orderQuantity, 4);
+  expect(result.predictedDemand).toBe(28 / 7);
+  expect(result.movingAverage).toBe(28 / 7);
+  expect(result.targetStock).toBe(4);
+  expect(result.orderQuantity).toBe(4);
 });
 
 test("calculateRecommendation: 판매 데이터가 7일 미만이어도 항상 7으로 나눈다", () => {
@@ -77,8 +75,8 @@ test("calculateRecommendation: 판매 데이터가 7일 미만이어도 항상 7
     orderUnit: 1,
   });
 
-  assert.ok(Math.abs(result.predictedDemand - 30 / 7) < 1e-9);
-  assert.deepEqual(result.dataWarning, [
+  expect(result.predictedDemand).toBeCloseTo(30 / 7, 9);
+  expect(result.dataWarning).toEqual([
     FORECAST_WARNING_CODES.INSUFFICIENT_MOVING_AVERAGE_WINDOW,
   ]);
 });
@@ -91,20 +89,23 @@ test("calculateRecommendation: 발주 단위 배수로 올림", () => {
     configuredSafetyStock: 0,
   };
 
-  assert.equal(
+  expect(
     calculateRecommendation({ ...base, currentStock: 0, orderUnit: 5 })
-      .orderQuantity,
-    5,
+      .orderQuantity
+  ).toBe(
+    5
   );
-  assert.equal(
+  expect(
     calculateRecommendation({ ...base, currentStock: 0, orderUnit: 1 })
-      .orderQuantity,
-    4,
+      .orderQuantity
+  ).toBe(
+    4
   );
-  assert.equal(
+  expect(
     calculateRecommendation({ ...base, currentStock: 2, orderUnit: 3 })
-      .orderQuantity,
-    3,
+      .orderQuantity
+  ).toBe(
+    3
   );
 });
 
@@ -117,9 +118,9 @@ test("calculateRecommendation: 현재 재고가 예상 판매량보다 많으면
     orderUnit: 5,
   });
 
-  assert.equal(result.orderQuantity, 0);
-  assert.equal(result.needsOrder, false);
-  assert.ok(result.rawOrderQuantity < 0);
+  expect(result.orderQuantity).toBe(0);
+  expect(result.needsOrder).toBe(false);
+  expect(result.rawOrderQuantity).toBeLessThan(0);
 });
 
 test("calculateRecommendation: 현재 재고가 예상 판매량보다 적으면 차이만큼 발주", () => {
@@ -131,9 +132,9 @@ test("calculateRecommendation: 현재 재고가 예상 판매량보다 적으면
     orderUnit: 1,
   });
 
-  assert.equal(result.targetStock, 4);
-  assert.equal(result.rawOrderQuantity, 1);
-  assert.equal(result.orderQuantity, 1);
+  expect(result.targetStock).toBe(4);
+  expect(result.rawOrderQuantity).toBe(1);
+  expect(result.orderQuantity).toBe(1);
 });
 
 test("calculateRecommendation: 입고 예정 수량을 목표재고에서 차감 (중복 계산 없음)", () => {
@@ -152,9 +153,9 @@ test("calculateRecommendation: 입고 예정 수량을 목표재고에서 차감
     orderUnit: 1,
   });
 
-  assert.equal(withoutIncoming.orderQuantity, 1);
-  assert.equal(withIncoming.orderQuantity, 0);
-  assert.equal(withIncoming.needsOrder, false);
+  expect(withoutIncoming.orderQuantity).toBe(1);
+  expect(withIncoming.orderQuantity).toBe(0);
+  expect(withIncoming.needsOrder).toBe(false);
 });
 
 test("calculateRecommendation: 점포 설정 안전재고는 발주 계산에 반영되지 않는다", () => {
@@ -167,13 +168,13 @@ test("calculateRecommendation: 점포 설정 안전재고는 발주 계산에 �
     configuredSafetyStock: 6,
   });
 
-  assert.equal(result.computedSafetyStock, 0);
-  assert.equal(result.configuredSafetyStock, 6);
-  assert.equal(result.appliedSafetyStock, 0);
-  assert.equal(result.safetyStockSource, "NOT_APPLIED");
+  expect(result.computedSafetyStock).toBe(0);
+  expect(result.configuredSafetyStock).toBe(6);
+  expect(result.appliedSafetyStock).toBe(0);
+  expect(result.safetyStockSource).toBe("NOT_APPLIED");
   // 목표재고는 예상 판매량만으로 결정된다.
-  assert.equal(result.targetStock, 4);
-  assert.equal(result.orderQuantity, 4);
+  expect(result.targetStock).toBe(4);
+  expect(result.orderQuantity).toBe(4);
 });
 
 test("calculateRecommendation: 변동성(표준편차)은 발주량에 영향을 주지 않는다", () => {
@@ -193,11 +194,11 @@ test("calculateRecommendation: 변동성(표준편차)은 발주량에 영향을
   });
 
   // 7일 합계가 같으면(28) 변동성과 무관하게 동일한 발주량이다.
-  assert.equal(volatile.predictedDemand, flat.predictedDemand);
-  assert.ok(volatile.dailyStdDev > flat.dailyStdDev);
-  assert.ok(volatile.computedSafetyStock > flat.computedSafetyStock);
-  assert.equal(volatile.targetStock, flat.targetStock);
-  assert.equal(volatile.orderQuantity, flat.orderQuantity);
+  expect(volatile.predictedDemand).toBe(flat.predictedDemand);
+  expect(volatile.dailyStdDev).toBeGreaterThan(flat.dailyStdDev);
+  expect(volatile.computedSafetyStock).toBeGreaterThan(flat.computedSafetyStock);
+  expect(volatile.targetStock).toBe(flat.targetStock);
+  expect(volatile.orderQuantity).toBe(flat.orderQuantity);
 });
 
 test("calculateRecommendation: 요일별 이동평균은 계산에 반영되지 않는다", () => {
@@ -212,9 +213,9 @@ test("calculateRecommendation: 요일별 이동평균은 계산에 반영되지 
   });
 
   // 예상 판매량 = 최근 7일 합계(44) / 7
-  assert.ok(Math.abs(result.predictedDemand - 44 / 7) < 1e-9);
-  assert.ok(Math.abs(result.movingAverage - 44 / 7) < 1e-9);
-  assert.equal(result.sameWeekdayAverage, null);
+  expect(result.predictedDemand).toBeCloseTo(44 / 7, 9);
+  expect(result.movingAverage).toBeCloseTo(44 / 7, 9);
+  expect(result.sameWeekdayAverage).toBeNull();
 });
 
 test("calculateRecommendation: 예측 기간은 1일로 고정되어 리드타임과 무관하다", () => {
@@ -229,53 +230,57 @@ test("calculateRecommendation: 예측 기간은 1일로 고정되어 리드타�
   const shortLead = calculateRecommendation({ ...base, leadTimeDays: 1 });
   const longLead = calculateRecommendation({ ...base, leadTimeDays: 5 });
 
-  assert.equal(FORECAST_PERIOD_DAYS, 1);
-  assert.equal(shortLead.coverageDays, 1);
-  assert.equal(longLead.coverageDays, 1);
-  assert.equal(longLead.targetStock, shortLead.targetStock);
-  assert.equal(longLead.orderQuantity, shortLead.orderQuantity);
+  expect(FORECAST_PERIOD_DAYS).toBe(1);
+  expect(shortLead.coverageDays).toBe(1);
+  expect(longLead.coverageDays).toBe(1);
+  expect(longLead.targetStock).toBe(shortLead.targetStock);
+  expect(longLead.orderQuantity).toBe(shortLead.orderQuantity);
 });
 
 test("calculateSafetyStock: 공식 직접 검증 (참고용, 발주 계산 미반영)", () => {
-  assert.equal(
-    calculateSafetyStock({ stdDev: 2, leadTimeDays: 4 }),
-    Math.ceil(1.65 * 2 * 2),
+  expect(
+    calculateSafetyStock({ stdDev: 2, leadTimeDays: 4 })
+  ).toBe(
+    Math.ceil(1.65 * 2 * 2)
   );
-  assert.equal(calculateSafetyStock({ stdDev: 0, leadTimeDays: 3 }), 0);
-  assert.equal(
+  expect(calculateSafetyStock({ stdDev: 0, leadTimeDays: 3 })).toBe(0);
+  expect(
     calculateSafetyStock({
       stdDev: 2.4397505,
       leadTimeDays: 1,
       serviceLevelZ: 2.33,
-    }),
-    6,
+    })
+  ).toBe(
+    6
   );
 });
 
 test("calculateOrderQuantity: 단위 올림과 0 처리", () => {
-  assert.deepEqual(
+  expect(
     calculateOrderQuantity({
       targetStock: 8,
       currentStock: 0,
       incomingQuantity: 0,
       orderUnit: 5,
-    }),
+    })
+  ).toEqual(
     {
       rawOrderQuantity: 8,
       orderQuantity: 10,
-    },
+    }
   );
-  assert.deepEqual(
+  expect(
     calculateOrderQuantity({
       targetStock: 8,
       currentStock: 8,
       incomingQuantity: 2,
       orderUnit: 5,
-    }),
+    })
+  ).toEqual(
     {
       rawOrderQuantity: -2,
       orderQuantity: 0,
-    },
+    }
   );
 });
 
@@ -288,9 +293,9 @@ test("calculateRecommendation: 데이터 부족 시 경고 반환", () => {
     orderUnit: 1,
   });
 
-  assert.ok(Math.abs(result.predictedDemand - 12 / 7) < 1e-9);
-  assert.equal(result.sameWeekdayAverage, null);
-  assert.deepEqual(result.dataWarning, ["INSUFFICIENT_MOVING_AVERAGE_WINDOW"]);
+  expect(result.predictedDemand).toBeCloseTo(12 / 7, 9);
+  expect(result.sameWeekdayAverage).toBeNull();
+  expect(result.dataWarning).toEqual(["INSUFFICIENT_MOVING_AVERAGE_WINDOW"]);
 });
 
 test("calculateRecommendation: 판매 기록이 없는 날짜는 0으로 처리", () => {
@@ -305,10 +310,10 @@ test("calculateRecommendation: 판매 기록이 없는 날짜는 0으로 처리"
     orderUnit: 1,
   });
 
-  assert.equal(result.salesSeriesDays, 7);
-  assert.ok(Math.abs(result.predictedDemand - 10 / 7) < 1e-9);
+  expect(result.salesSeriesDays).toBe(7);
+  expect(result.predictedDemand).toBeCloseTo(10 / 7, 9);
   // 목표재고 = ceil(예상 판매량 × 1일)
-  assert.equal(result.targetStock, Math.ceil(result.predictedDemand));
+  expect(result.targetStock).toBe(Math.ceil(result.predictedDemand));
 });
 
 test("calculateRecommendation: 판매 기록이 전혀 없으면 발주 0과 경고", () => {
@@ -320,15 +325,15 @@ test("calculateRecommendation: 판매 기록이 전혀 없으면 발주 0과 경
     orderUnit: 3,
   });
 
-  assert.equal(result.predictedDemand, 0);
-  assert.equal(result.movingAverage, 0);
-  assert.equal(result.sameWeekdayAverage, null);
-  assert.equal(result.dailyStdDev, 0);
-  assert.equal(result.computedSafetyStock, 0);
-  assert.equal(result.targetStock, 0);
-  assert.equal(result.orderQuantity, 0);
-  assert.equal(result.needsOrder, false);
-  assert.deepEqual(result.dataWarning, [WARNING_CODES.NO_SALES_DATA]);
+  expect(result.predictedDemand).toBe(0);
+  expect(result.movingAverage).toBe(0);
+  expect(result.sameWeekdayAverage).toBeNull();
+  expect(result.dailyStdDev).toBe(0);
+  expect(result.computedSafetyStock).toBe(0);
+  expect(result.targetStock).toBe(0);
+  expect(result.orderQuantity).toBe(0);
+  expect(result.needsOrder).toBe(false);
+  expect(result.dataWarning).toEqual([WARNING_CODES.NO_SALES_DATA]);
 });
 
 test("calculateRecommendation: 무판매 상품은 설정 안전재고가 있어도 발주 0", () => {
@@ -341,13 +346,13 @@ test("calculateRecommendation: 무판매 상품은 설정 안전재고가 있어
     configuredSafetyStock: 5,
   });
 
-  assert.equal(result.configuredSafetyStock, 5);
-  assert.equal(result.appliedSafetyStock, 0);
-  assert.equal(result.safetyStockSource, "NOT_APPLIED");
-  assert.equal(result.targetStock, 0);
-  assert.equal(result.orderQuantity, 0);
-  assert.equal(result.needsOrder, false);
-  assert.deepEqual(result.dataWarning, [WARNING_CODES.NO_SALES_DATA]);
+  expect(result.configuredSafetyStock).toBe(5);
+  expect(result.appliedSafetyStock).toBe(0);
+  expect(result.safetyStockSource).toBe("NOT_APPLIED");
+  expect(result.targetStock).toBe(0);
+  expect(result.orderQuantity).toBe(0);
+  expect(result.needsOrder).toBe(false);
+  expect(result.dataWarning).toEqual([WARNING_CODES.NO_SALES_DATA]);
 });
 
 test("calculateRecommendation: 1일 데이터면 표준편차 0과 경고", () => {
@@ -359,50 +364,51 @@ test("calculateRecommendation: 1일 데이터면 표준편차 0과 경고", () =
     orderUnit: 1,
   });
 
-  assert.equal(result.dailyStdDev, 0);
-  assert.equal(result.salesSeriesDays, 1);
-  assert.ok(result.dataWarning.includes(WARNING_CODES.INSUFFICIENT_SALES_DATA));
-  assert.ok(
-    result.dataWarning.includes(
-      FORECAST_WARNING_CODES.INSUFFICIENT_MOVING_AVERAGE_WINDOW,
-    ),
+  expect(result.dailyStdDev).toBe(0);
+  expect(result.salesSeriesDays).toBe(1);
+  expect(result.dataWarning).toContain(WARNING_CODES.INSUFFICIENT_SALES_DATA);
+  expect(result.dataWarning).toContain(
+    FORECAST_WARNING_CODES.INSUFFICIENT_MOVING_AVERAGE_WINDOW,
   );
 });
 
 test("calculateRecommendation: 잘못된 입력은 거부한다", () => {
   const validSales = seriesFrom([4, 4, 4, 4, 4, 4, 4]);
 
-  assert.throws(
+  expect(
     () =>
       calculateRecommendation({
         dailySales: validSales,
         currentStock: -1,
         leadTimeDays: 1,
         orderUnit: 1,
-      }),
-    /현재 재고/,
+      })
+  ).toThrow(
+    /현재 재고/
   );
-  assert.throws(
+  expect(
     () =>
       calculateRecommendation({
         dailySales: validSales,
         currentStock: 1,
         leadTimeDays: 0,
         orderUnit: 1,
-      }),
-    /리드타임/,
+      })
+  ).toThrow(
+    /리드타임/
   );
-  assert.throws(
+  expect(
     () =>
       calculateRecommendation({
         dailySales: validSales,
         currentStock: 1,
         leadTimeDays: 1,
         orderUnit: 0,
-      }),
-    /발주 단위/,
+      })
+  ).toThrow(
+    /발주 단위/
   );
-  assert.throws(
+  expect(
     () =>
       calculateRecommendation({
         dailySales: validSales,
@@ -410,10 +416,11 @@ test("calculateRecommendation: 잘못된 입력은 거부한다", () => {
         leadTimeDays: 1,
         orderUnit: 1,
         configuredSafetyStock: -3,
-      }),
-    /설정 안전재고/,
+      })
+  ).toThrow(
+    /설정 안전재고/
   );
-  assert.throws(
+  expect(
     () =>
       calculateRecommendation({
         dailySales: validSales,
@@ -421,20 +428,22 @@ test("calculateRecommendation: 잘못된 입력은 거부한다", () => {
         leadTimeDays: 1,
         orderUnit: 1,
         serviceLevelZ: 0,
-      }),
-    /서비스 계수/,
+      })
+  ).toThrow(
+    /서비스 계수/
   );
-  assert.throws(
+  expect(
     () =>
       calculateRecommendation({
         dailySales: [{ date: "2026-11-08", quantity: -2 }],
         currentStock: 1,
         leadTimeDays: 1,
         orderUnit: 1,
-      }),
-    /판매량/,
+      })
+  ).toThrow(
+    /판매량/
   );
-  assert.throws(
+  expect(
     () =>
       calculateRecommendation({
         dailySales: [
@@ -444,18 +453,20 @@ test("calculateRecommendation: 잘못된 입력은 거부한다", () => {
         currentStock: 1,
         leadTimeDays: 1,
         orderUnit: 1,
-      }),
-    /중복/,
+      })
+  ).toThrow(
+    /중복/
   );
-  assert.throws(
+  expect(
     () =>
       calculateRecommendation({
         dailySales: [{ date: "invalid", quantity: 1 }],
         currentStock: 1,
         leadTimeDays: 1,
         orderUnit: 1,
-      }),
-    /날짜/,
+      })
+  ).toThrow(
+    /날짜/
   );
 });
 
@@ -471,13 +482,13 @@ test("calculateDailyStats: 표본 표준편차(n-1) 계산", () => {
     { key: "2026-11-09", quantity: 7 },
   ]);
 
-  assert.equal(stats.sampleCount, 8);
-  assert.equal(stats.mean, 4.5);
-  assert.ok(Math.abs(stats.stdDev - Math.sqrt(2)) < 1e-9);
-  assert.equal(calculateDailyStats([]).stdDev, 0);
-  assert.equal(calculateDailyStats([{ key: "x", quantity: 3 }]).stdDev, 0);
+  expect(stats.sampleCount).toBe(8);
+  expect(stats.mean).toBe(4.5);
+  expect(stats.stdDev).toBeCloseTo(Math.sqrt(2), 9);
+  expect(calculateDailyStats([]).stdDev).toBe(0);
+  expect(calculateDailyStats([{ key: "x", quantity: 3 }]).stdDev).toBe(0);
 });
 
 test("기본 서비스 계수는 1.65 (95% 서비스 수준, 참고용 안전재고에만 사용)", () => {
-  assert.equal(SERVICE_LEVEL_Z, 1.65);
+  expect(SERVICE_LEVEL_Z).toBe(1.65);
 });

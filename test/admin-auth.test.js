@@ -1,5 +1,3 @@
-const assert = require("node:assert/strict");
-const test = require("node:test");
 const request = require("supertest");
 const { app, setQueryMock } = require("./support/test-app");
 
@@ -11,8 +9,8 @@ test("rejects invalid admin login input and credentials", async () => {
     .post("/api/admin/auth/login")
     .send({ admin_username: "admin", password: "wrong-password" });
 
-  assert.equal(input.status, 400);
-  assert.equal(credentials.status, 401);
+  expect(input.statusCode).toBe(400);
+  expect(credentials.statusCode).toBe(401);
 });
 
 test("does not allow a store token to access admin APIs", async () => {
@@ -39,5 +37,5 @@ test("does not allow a store token to access admin APIs", async () => {
     .get("/api/admin/stores")
     .set("Authorization", `Bearer ${storeToken()}`);
 
-  assert.equal(response.status, 403);
+  expect(response.statusCode).toBe(403);
 });

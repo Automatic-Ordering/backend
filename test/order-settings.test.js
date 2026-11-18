@@ -1,5 +1,3 @@
-const assert = require("node:assert/strict");
-const test = require("node:test");
 const request = require("supertest");
 const { sequelize } = require("../config/database");
 const { StoreOrderSetting } = require("../models");
@@ -98,13 +96,13 @@ const seriesFrom = (quantities, endDate = "2026-11-08") => {
 
 test("order settings endpoints require store authentication", async () => {
   const unauthorized = await request(app).get("/api/store/order-settings");
-  assert.equal(unauthorized.status, 401);
+  expect(unauthorized.statusCode).toBe(401);
 
   setAdminAuthMock();
   const adminOnStore = await request(app)
     .get("/api/store/order-settings")
     .set("Authorization", `Bearer ${adminToken()}`);
-  assert.equal(adminOnStore.status, 403);
+  expect(adminOnStore.statusCode).toBe(403);
 });
 
 test("GET returns existing store settings", async () => {
@@ -125,15 +123,15 @@ test("GET returns existing store settings", async () => {
       .get("/api/store/order-settings")
       .set("Authorization", `Bearer ${storeToken()}`);
 
-    assert.equal(response.status, 200);
-    assert.equal(findOneCalls[0].where.storeId, 1);
-    assert.equal(response.body.store_id, 1);
-    assert.equal(response.body.analysis_period_days, 90);
-    assert.equal(response.body.moving_average_days, 7);
-    assert.equal(response.body.moving_average_weight, 0.4);
-    assert.equal(response.body.same_weekday_weight, 0.6);
-    assert.equal(response.body.service_factor, 1.65);
-    assert.equal(response.body.forecast_period_days, 3);
+    expect(response.statusCode).toBe(200);
+    expect(findOneCalls[0].where.storeId).toBe(1);
+    expect(response.body.store_id).toBe(1);
+    expect(response.body.analysis_period_days).toBe(90);
+    expect(response.body.moving_average_days).toBe(7);
+    expect(response.body.moving_average_weight).toBe(0.4);
+    expect(response.body.same_weekday_weight).toBe(0.6);
+    expect(response.body.service_factor).toBe(1.65);
+    expect(response.body.forecast_period_days).toBe(3);
   } finally {
     restoreFindOne();
   }
@@ -162,10 +160,10 @@ test("GET creates default settings when missing", async () => {
       .get("/api/store/order-settings")
       .set("Authorization", `Bearer ${storeToken()}`);
 
-    assert.equal(response.status, 200);
-    assert.equal(createCalls.length, 1);
-    assert.equal(createCalls[0].storeId, 1);
-    assert.deepEqual(
+    expect(response.statusCode).toBe(200);
+    expect(createCalls.length).toBe(1);
+    expect(createCalls[0].storeId).toBe(1);
+    expect(
       {
         analysisPeriodDays: createCalls[0].analysisPeriodDays,
         movingAverageDays: createCalls[0].movingAverageDays,
@@ -173,15 +171,16 @@ test("GET creates default settings when missing", async () => {
         sameWeekdayWeight: createCalls[0].sameWeekdayWeight,
         serviceFactor: createCalls[0].serviceFactor,
         forecastPeriodDays: createCalls[0].forecastPeriodDays,
-      },
-      DEFAULT_ORDER_SETTINGS,
+      }
+    ).toEqual(
+      DEFAULT_ORDER_SETTINGS
     );
-    assert.equal(response.body.analysis_period_days, 120);
-    assert.equal(response.body.moving_average_days, 7);
-    assert.equal(response.body.moving_average_weight, 0.4);
-    assert.equal(response.body.same_weekday_weight, 0.6);
-    assert.equal(response.body.service_factor, 1.65);
-    assert.equal(response.body.forecast_period_days, 3);
+    expect(response.body.analysis_period_days).toBe(120);
+    expect(response.body.moving_average_days).toBe(7);
+    expect(response.body.moving_average_weight).toBe(0.4);
+    expect(response.body.same_weekday_weight).toBe(0.6);
+    expect(response.body.service_factor).toBe(1.65);
+    expect(response.body.forecast_period_days).toBe(3);
   } finally {
     restoreFindOne();
     restoreCreate();
@@ -196,7 +195,7 @@ test("PATCH updates allowed settings fields only for the token store", async () 
     StoreOrderSetting,
     "findOne",
     async (args) => {
-      assert.equal(args.where.storeId, 1);
+      expect(args.where.storeId).toBe(1);
       return instance;
     },
   );
@@ -211,13 +210,13 @@ test("PATCH updates allowed settings fields only for the token store", async () 
         forecast_period_days: 5,
       });
 
-    assert.equal(response.status, 200);
-    assert.equal(response.body.analysis_period_days, 90);
-    assert.equal(response.body.service_factor, 1.8);
-    assert.equal(response.body.forecast_period_days, 5);
-    assert.equal(instance.saveCalls, 1);
+    expect(response.statusCode).toBe(200);
+    expect(response.body.analysis_period_days).toBe(90);
+    expect(response.body.service_factor).toBe(1.8);
+    expect(response.body.forecast_period_days).toBe(5);
+    expect(instance.saveCalls).toBe(1);
     // PATCH 본문에 store_id를 넣어도 토큰 점포만 수정 대상이 된다.
-    assert.equal(instance.storeId, 1);
+    expect(instance.storeId).toBe(1);
   } finally {
     restoreFindOne();
   }
@@ -237,21 +236,21 @@ test("PATCH rejects unknown fields including store_id of other stores", async ()
       .patch("/api/store/order-settings")
       .set("Authorization", `Bearer ${storeToken()}`)
       .send({ store_id: 2, analysis_period_days: 60 });
-    assert.equal(otherStore.status, 400);
-    assert.match(otherStore.body.message, /store_id/);
+    expect(otherStore.statusCode).toBe(400);
+    expect(otherStore.body.message).toMatch(/store_id/);
 
     const unknown = await request(app)
       .patch("/api/store/order-settings")
       .set("Authorization", `Bearer ${storeToken()}`)
       .send({ mystery_field: 1 });
-    assert.equal(unknown.status, 400);
-    assert.match(unknown.body.message, /mystery_field/);
+    expect(unknown.statusCode).toBe(400);
+    expect(unknown.body.message).toMatch(/mystery_field/);
 
     const empty = await request(app)
       .patch("/api/store/order-settings")
       .set("Authorization", `Bearer ${storeToken()}`)
       .send({});
-    assert.equal(empty.status, 400);
+    expect(empty.statusCode).toBe(400);
   } finally {
     restoreFindOne();
   }
@@ -285,8 +284,8 @@ test("PATCH validates setting value ranges", async () => {
         .patch("/api/store/order-settings")
         .set("Authorization", `Bearer ${storeToken()}`)
         .send(body);
-      assert.equal(response.status, 400, JSON.stringify(body));
-      assert.match(response.body.message, pattern, JSON.stringify(body));
+      expect(response.statusCode).toBe(400);
+      expect(response.body.message).toMatch(pattern);
     }
   } finally {
     restoreFindOne();
@@ -309,27 +308,27 @@ test("PATCH enforces weight sum of 1", async () => {
       .patch("/api/store/order-settings")
       .set("Authorization", `Bearer ${storeToken()}`)
       .send({ moving_average_weight: 0.5 });
-    assert.equal(singleChange.status, 400);
-    assert.match(singleChange.body.message, /합은 1/);
+    expect(singleChange.statusCode).toBe(400);
+    expect(singleChange.body.message).toMatch(/합은 1/);
 
     // 0으로 단독 변경: 0.4 + 0 = 0.4 → 거부
     const zeroWeight = await request(app)
       .patch("/api/store/order-settings")
       .set("Authorization", `Bearer ${storeToken()}`)
       .send({ same_weekday_weight: 0 });
-    assert.equal(zeroWeight.status, 400);
+    expect(zeroWeight.statusCode).toBe(400);
 
     // 두 가중치를 함께 변경해 합이 1 → 허용
     const both = await request(app)
       .patch("/api/store/order-settings")
       .set("Authorization", `Bearer ${storeToken()}`)
       .send({ moving_average_weight: 0.7, same_weekday_weight: 0.3 });
-    assert.equal(both.status, 200);
-    assert.equal(both.body.moving_average_weight, 0.7);
-    assert.equal(both.body.same_weekday_weight, 0.3);
-    assert.equal(instance.saveCalls, 1);
-    assert.equal(instance.movingAverageWeight, 0.7);
-    assert.equal(instance.sameWeekdayWeight, 0.3);
+    expect(both.statusCode).toBe(200);
+    expect(both.body.moving_average_weight).toBe(0.7);
+    expect(both.body.same_weekday_weight).toBe(0.3);
+    expect(instance.saveCalls).toBe(1);
+    expect(instance.movingAverageWeight).toBe(0.7);
+    expect(instance.sameWeekdayWeight).toBe(0.3);
 
     // 극값(1, 0)도 합이 1이면 허용
     const restoreFindOne2 = overrideMethod(
@@ -342,7 +341,7 @@ test("PATCH enforces weight sum of 1", async () => {
         .patch("/api/store/order-settings")
         .set("Authorization", `Bearer ${storeToken()}`)
         .send({ moving_average_weight: 1, same_weekday_weight: 0 });
-      assert.equal(extremes.status, 200);
+      expect(extremes.statusCode).toBe(200);
     } finally {
       restoreFindOne2();
     }
@@ -374,15 +373,15 @@ test("점포 설정값(이동평균 기간/가중치/예측 기간)은 발주 �
     },
   });
 
-  assert.equal(legacy.predictedDemand, 4);
-  assert.equal(withDefaults.predictedDemand, legacy.predictedDemand);
-  assert.equal(withDefaults.movingAverage, legacy.movingAverage);
-  assert.equal(withDefaults.targetStock, legacy.targetStock);
-  assert.equal(withDefaults.orderQuantity, legacy.orderQuantity);
-  assert.deepEqual(withDefaults.dataWarning, legacy.dataWarning);
+  expect(legacy.predictedDemand).toBe(4);
+  expect(withDefaults.predictedDemand).toBe(legacy.predictedDemand);
+  expect(withDefaults.movingAverage).toBe(legacy.movingAverage);
+  expect(withDefaults.targetStock).toBe(legacy.targetStock);
+  expect(withDefaults.orderQuantity).toBe(legacy.orderQuantity);
+  expect(withDefaults.dataWarning).toEqual(legacy.dataWarning);
   // 예측 기간은 1일로 고정되어 설정값과 무관하다.
-  assert.equal(withDefaults.coverageDays, 1);
-  assert.equal(legacy.coverageDays, 1);
+  expect(withDefaults.coverageDays).toBe(1);
+  expect(legacy.coverageDays).toBe(1);
 });
 
 test("예측 기간은 1일로 고정된다 (설정값을 전달해도 무시된다)", () => {
@@ -398,10 +397,10 @@ test("예측 기간은 1일로 고정된다 (설정값을 전달해도 무시된
   });
 
   // 커버리지 = 예측 기간 1일 고정 → 목표재고 = ceil(4 × 1) = 4
-  assert.equal(result.coverageDays, 1);
-  assert.equal(result.forecastPeriodDays, 1);
-  assert.equal(result.targetStock, 4);
-  assert.equal(result.orderQuantity, 5);
+  expect(result.coverageDays).toBe(1);
+  expect(result.forecastPeriodDays).toBe(1);
+  expect(result.targetStock).toBe(4);
+  expect(result.orderQuantity).toBe(5);
 });
 
 test("커스텀 설정을 전달해도 발주 계산은 7일 이동평균·1일 고정으로 동일하다", () => {
@@ -428,14 +427,14 @@ test("커스텀 설정을 전달해도 발주 계산은 7일 이동평균·1일 
   });
 
   // 이동평균 기간/가중치/예측 기간 설정은 계산에 반영되지 않는다.
-  assert.ok(Math.abs(legacy.movingAverage - 46 / 7) < 1e-9);
-  assert.ok(Math.abs(custom.movingAverage - 46 / 7) < 1e-9);
-  assert.ok(Math.abs(custom.predictedDemand - 46 / 7) < 1e-9);
-  assert.equal(custom.sameWeekdayAverage, null);
-  assert.equal(custom.coverageDays, 1);
-  assert.equal(custom.targetStock, legacy.targetStock);
-  assert.equal(custom.orderQuantity, legacy.orderQuantity);
+  expect(legacy.movingAverage).toBeCloseTo(46 / 7, 9);
+  expect(custom.movingAverage).toBeCloseTo(46 / 7, 9);
+  expect(custom.predictedDemand).toBeCloseTo(46 / 7, 9);
+  expect(custom.sameWeekdayAverage).toBeNull();
+  expect(custom.coverageDays).toBe(1);
+  expect(custom.targetStock).toBe(legacy.targetStock);
+  expect(custom.orderQuantity).toBe(legacy.orderQuantity);
   // 서비스 계수는 참고용 computed_safety_stock에만 영향을 준다.
-  assert.ok(custom.dailyStdDev > 0);
-  assert.ok(custom.computedSafetyStock > legacy.computedSafetyStock);
+  expect(custom.dailyStdDev).toBeGreaterThan(0);
+  expect(custom.computedSafetyStock).toBeGreaterThan(legacy.computedSafetyStock);
 });

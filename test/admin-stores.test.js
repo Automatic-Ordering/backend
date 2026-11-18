@@ -1,5 +1,3 @@
-const assert = require("node:assert/strict");
-const test = require("node:test");
 const bcrypt = require("bcrypt");
 const request = require("supertest");
 const {
@@ -55,18 +53,18 @@ test("creates a store and account in one transaction", async () => {
       password: "StorePass123!",
     });
 
-  assert.equal(response.status, 201);
-  assert.deepEqual(response.body, {
+  expect(response.statusCode).toBe(201);
+  expect(response.body).toEqual({
     store_id: 42,
     store_code: "STORE001",
     store_name: "Test Store",
     status: "ACTIVE",
   });
-  assert.ok(connection.calls.some((sql) => sql.includes("INSERT INTO stores")));
-  assert.ok(
-    connection.calls.some((sql) => sql.includes("INSERT INTO store_accounts")),
-  );
-  assert.ok(connection.calls.includes("commit"));
+  expect(connection.calls.some((sql) => sql.includes("INSERT INTO stores"))).toBeTruthy();
+  expect(
+    connection.calls.some((sql) => sql.includes("INSERT INTO store_accounts"))
+  ).toBeTruthy();
+  expect(connection.calls).toContain("commit");
 });
 
 test("creates a store with auto-generated 5-digit store_code when only store_name is provided", async () => {
@@ -90,20 +88,21 @@ test("creates a store with auto-generated 5-digit store_code when only store_nam
     .set("Authorization", `Bearer ${adminToken()}`)
     .send({ store_name: "자동발주 1호점" });
 
-  assert.equal(response.status, 201);
-  assert.equal(response.body.store_id, 42);
-  assert.equal(response.body.store_name, "자동발주 1호점");
-  assert.equal(response.body.status, "ACTIVE");
-  assert.match(response.body.store_code, /^\d{5}$/);
-  assert.equal(
-    response.body.initial_password,
-    `Store${response.body.store_code}!`,
+  expect(response.statusCode).toBe(201);
+  expect(response.body.store_id).toBe(42);
+  expect(response.body.store_name).toBe("자동발주 1호점");
+  expect(response.body.status).toBe("ACTIVE");
+  expect(response.body.store_code).toMatch(/^\d{5}$/);
+  expect(
+    response.body.initial_password
+  ).toBe(
+    `Store${response.body.store_code}!`
   );
-  assert.ok(connection.calls.some((sql) => sql.includes("INSERT INTO stores")));
-  assert.ok(
-    connection.calls.some((sql) => sql.includes("INSERT INTO store_accounts")),
-  );
-  assert.ok(connection.calls.includes("commit"));
+  expect(connection.calls.some((sql) => sql.includes("INSERT INTO stores"))).toBeTruthy();
+  expect(
+    connection.calls.some((sql) => sql.includes("INSERT INTO store_accounts"))
+  ).toBeTruthy();
+  expect(connection.calls).toContain("commit");
 });
 
 test("retries store code generation when candidate code already exists", async () => {
@@ -134,14 +133,11 @@ test("retries store code generation when candidate code already exists", async (
     .set("Authorization", `Bearer ${adminToken()}`)
     .send({ store_name: "자동발주 2호점" });
 
-  assert.equal(response.status, 201);
-  assert.equal(response.body.store_id, 42);
-  assert.equal(response.body.store_name, "자동발주 2호점");
-  assert.match(response.body.store_code, /^\d{5}$/);
-  assert.ok(
-    storeCheckCount >= 2,
-    "Should have queried stores at least twice due to duplicate code",
-  );
+  expect(response.statusCode).toBe(201);
+  expect(response.body.store_id).toBe(42);
+  expect(response.body.store_name).toBe("자동발주 2호점");
+  expect(response.body.store_code).toMatch(/^\d{5}$/);
+  expect(storeCheckCount).toBeGreaterThanOrEqual(2);
 });
 
 /* NEW TESTS */
@@ -168,22 +164,22 @@ test("inventory bulkCreate is called with correct rows and transaction", async (
     .set("Authorization", `Bearer ${adminToken()}`)
     .send({ store_name: "InventoryTest" });
 
-  assert.equal(response.status, 201);
+  expect(response.statusCode).toBe(201);
   const rows = getCapturedBulkRows();
-  assert.ok(
-    Array.isArray(rows) && rows.length > 0,
-    "bulkCreate should receive rows",
-  );
+  expect(
+    Array.isArray(rows) && rows.length > 0
+  ).toBeTruthy();
   rows.forEach((row) => {
-    assert.equal(row.storeId, response.body.store_id);
-    assert.equal(row.currentStock, 0);
-    assert.ok(Number.isInteger(row.safetyStock) && row.safetyStock >= 0);
+    expect(row.storeId).toBe(response.body.store_id);
+    expect(row.currentStock).toBe(0);
+    expect(Number.isInteger(row.safetyStock) && row.safetyStock >= 0).toBeTruthy();
   });
-  assert.strictEqual(
-    getCapturedStoreCreateTx(),
-    getCapturedStoreAccountCreateTx(),
+  expect(
+    getCapturedStoreCreateTx()
+  ).toBe(
+    getCapturedStoreAccountCreateTx()
   );
-  assert.strictEqual(getCapturedStoreCreateTx(), getCapturedBulkTx());
+  expect(getCapturedStoreCreateTx()).toBe(getCapturedBulkTx());
 });
 
 test("transaction rollback occurs when inventory bulkCreate fails", async () => {
@@ -204,16 +200,20 @@ test("transaction rollback occurs when inventory bulkCreate fails", async () => 
     return [];
   });
 
-  const response = await request(app)
-    .post("/api/admin/stores")
-    .set("Authorization", `Bearer ${adminToken()}`)
-    .send({ store_name: "RollbackTest" });
+  const errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+  try {
+    const response = await request(app)
+      .post("/api/admin/stores")
+      .set("Authorization", `Bearer ${adminToken()}`)
+      .send({ store_name: "RollbackTest" });
 
-  assert.equal(response.status, 500);
-  assert.ok(
-    connection.calls.includes("rollback"),
-    "Transaction should be rolled back",
-  );
+    expect(response.statusCode).toBe(500);
+    expect(
+      connection.calls.includes("rollback")
+    ).toBeTruthy();
+  } finally {
+    errorSpy.mockRestore();
+  }
 });
 
 /* Password reset tests */
@@ -251,34 +251,31 @@ test("resets store password and returns temporary password", async () => {
     .patch("/api/admin/stores/7/password/reset")
     .set("Authorization", `Bearer ${adminToken()}`);
 
-  assert.equal(response.status, 200);
-  assert.equal(response.body.success, true);
-  assert.equal(response.body.message, "점포 비밀번호가 초기화되었습니다.");
-  assert.equal(response.body.data.temporaryPassword, "Store50001!");
+  expect(response.statusCode).toBe(200);
+  expect(response.body.success).toBe(true);
+  expect(response.body.message).toBe("점포 비밀번호가 초기화되었습니다.");
+  expect(response.body.data.temporaryPassword).toBe("Store50001!");
 
   const update = getCapturedStoreAccountUpdate();
-  assert.ok(update, "account.update should have been called");
-  assert.equal(update.passwordChangeRequired, true);
-  assert.ok(
-    update.passwordHash.startsWith("$2b$12$"),
-    "DB must store a bcrypt hash",
+  expect(update).toBeTruthy();
+  expect(update.passwordChangeRequired).toBe(true);
+  expect(
+    update.passwordHash.startsWith("$2b$12$")
+  ).toBeTruthy();
+  expect(
+    update.passwordHash
+  ).not.toBe(
+    response.body.data.temporaryPassword
   );
-  assert.notEqual(
-    update.passwordHash,
-    response.body.data.temporaryPassword,
-    "plaintext must not be stored",
-  );
-  assert.ok(
+  expect(
     bcrypt.compareSync(
       response.body.data.temporaryPassword,
       update.passwordHash,
-    ),
-    "hash must match the temporary password",
-  );
-  assert.ok(
-    !JSON.stringify(response.body).includes(update.passwordHash),
-    "response must not leak the hash",
-  );
+    )
+  ).toBeTruthy();
+  expect(
+    !JSON.stringify(response.body).includes(update.passwordHash)
+  ).toBeTruthy();
 });
 
 test("returns 404 when store does not exist for password reset", async () => {
@@ -293,9 +290,9 @@ test("returns 404 when store does not exist for password reset", async () => {
     .patch("/api/admin/stores/999/password/reset")
     .set("Authorization", `Bearer ${adminToken()}`);
 
-  assert.equal(response.status, 404);
-  assert.equal(response.body.message, "점포를 찾을 수 없습니다.");
-  assert.equal(getCapturedStoreAccountUpdate(), null);
+  expect(response.statusCode).toBe(404);
+  expect(response.body.message).toBe("점포를 찾을 수 없습니다.");
+  expect(getCapturedStoreAccountUpdate()).toBeNull();
 });
 
 test("returns 404 when store account does not exist for password reset", async () => {
@@ -321,9 +318,9 @@ test("returns 404 when store account does not exist for password reset", async (
     .patch("/api/admin/stores/7/password/reset")
     .set("Authorization", `Bearer ${adminToken()}`);
 
-  assert.equal(response.status, 404);
-  assert.equal(response.body.message, "점포 계정을 찾을 수 없습니다.");
-  assert.equal(getCapturedStoreAccountUpdate(), null);
+  expect(response.statusCode).toBe(404);
+  expect(response.body.message).toBe("점포 계정을 찾을 수 없습니다.");
+  expect(getCapturedStoreAccountUpdate()).toBeNull();
 });
 
 test("rejects password reset for store role tokens", async () => {
@@ -351,7 +348,7 @@ test("rejects password reset for store role tokens", async () => {
     .patch("/api/admin/stores/1/password/reset")
     .set("Authorization", `Bearer ${storeToken()}`);
 
-  assert.equal(response.status, 403);
-  assert.equal(response.body.error, "FORBIDDEN");
-  assert.equal(getCapturedStoreAccountUpdate(), null);
+  expect(response.statusCode).toBe(403);
+  expect(response.body.error).toBe("FORBIDDEN");
+  expect(getCapturedStoreAccountUpdate()).toBeNull();
 });

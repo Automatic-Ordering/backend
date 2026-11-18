@@ -1,5 +1,3 @@
-const assert = require("node:assert/strict");
-const test = require("node:test");
 const request = require("supertest");
 const { sequelize } = require("../config/database");
 const {
@@ -65,8 +63,8 @@ test("returns only the authenticated store inventory for active products", async
       .get("/api/store/products?store_id=99999")
       .set("Authorization", `Bearer ${storeToken()}`);
 
-    assert.equal(response.status, 200);
-    assert.deepEqual(response.body, [
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toEqual([
       {
         product_id: 2,
         product_name: "Cup Noodles",
@@ -86,10 +84,10 @@ test("returns only the authenticated store inventory for active products", async
         safety_stock: null,
       },
     ]);
-    assert.equal(queryCalls.length, 1);
-    assert.equal(queryCalls[0].options.replacements.storeId, 1);
-    assert.match(queryCalls[0].sql, /LEFT JOIN store_inventories/i);
-    assert.match(queryCalls[0].sql, /si\.store_id = :storeId/i);
+    expect(queryCalls.length).toBe(1);
+    expect(queryCalls[0].options.replacements.storeId).toBe(1);
+    expect(queryCalls[0].sql).toMatch(/LEFT JOIN store_inventories/i);
+    expect(queryCalls[0].sql).toMatch(/si\.store_id = :storeId/i);
   } finally {
     sequelize.query = originalQuery;
   }
@@ -97,7 +95,7 @@ test("returns only the authenticated store inventory for active products", async
 
 test("requires store authentication for the store product list", async () => {
   const unauthenticated = await request(app).get("/api/store/products");
-  assert.equal(unauthenticated.status, 401);
+  expect(unauthenticated.statusCode).toBe(401);
 
   setQueryMock(async (sql) => {
     if (sql.includes("FROM admins")) {
@@ -109,7 +107,7 @@ test("requires store authentication for the store product list", async () => {
   const adminResponse = await request(app)
     .get("/api/store/products")
     .set("Authorization", `Bearer ${adminToken()}`);
-  assert.equal(adminResponse.status, 403);
+  expect(adminResponse.statusCode).toBe(403);
 });
 
 test("paginated mode returns registered products with search", async () => {
@@ -162,32 +160,32 @@ test("paginated mode returns registered products with search", async () => {
       .get("/api/store/products?page=2&limit=5&search=컵면")
       .set("Authorization", `Bearer ${storeToken()}`);
 
-    assert.equal(response.status, 200);
-    assert.equal(response.body.items.length, 1);
-    assert.equal(response.body.total, 12);
-    assert.equal(response.body.page, 2);
-    assert.equal(response.body.limit, 5);
-    assert.equal(response.body.total_pages, 3);
+    expect(response.statusCode).toBe(200);
+    expect(response.body.items.length).toBe(1);
+    expect(response.body.total).toBe(12);
+    expect(response.body.page).toBe(2);
+    expect(response.body.limit).toBe(5);
+    expect(response.body.total_pages).toBe(3);
 
     const first = response.body.items[0];
-    assert.equal(first.product_id, 2);
-    assert.equal(first.is_registered, true);
-    assert.equal(first.current_stock, 20);
+    expect(first.product_id).toBe(2);
+    expect(first.is_registered).toBe(true);
+    expect(first.current_stock).toBe(20);
 
-    assert.equal(queryCalls.length, 2);
-    assert.match(queryCalls[0].sql, /COUNT\(\*\)/i);
-    assert.equal(queryCalls[0].options.replacements.storeId, 1);
-    assert.equal(queryCalls[0].options.replacements.search, "%컵면%");
-    assert.match(queryCalls[1].sql, /LIMIT :limit OFFSET :offset/i);
-    assert.equal(queryCalls[1].options.replacements.limit, 5);
-    assert.equal(queryCalls[1].options.replacements.offset, 5);
-    assert.match(queryCalls[1].sql, /si\.inventory_id IS NOT NULL/i);
+    expect(queryCalls.length).toBe(2);
+    expect(queryCalls[0].sql).toMatch(/COUNT\(\*\)/i);
+    expect(queryCalls[0].options.replacements.storeId).toBe(1);
+    expect(queryCalls[0].options.replacements.search).toBe("%컵면%");
+    expect(queryCalls[1].sql).toMatch(/LIMIT :limit OFFSET :offset/i);
+    expect(queryCalls[1].options.replacements.limit).toBe(5);
+    expect(queryCalls[1].options.replacements.offset).toBe(5);
+    expect(queryCalls[1].sql).toMatch(/si\.inventory_id IS NOT NULL/i);
 
     const invalidPage = await request(app)
       .get("/api/store/products?page=0")
       .set("Authorization", `Bearer ${storeToken()}`);
-    assert.equal(invalidPage.status, 400);
-    assert.match(invalidPage.body.message, /page/);
+    expect(invalidPage.statusCode).toBe(400);
+    expect(invalidPage.body.message).toMatch(/page/);
   } finally {
     sequelize.query = originalQuery;
   }

@@ -1,5 +1,3 @@
-const assert = require("node:assert/strict");
-const test = require("node:test");
 const request = require("supertest");
 const { app, storeToken, setQueryMock } = require("./support/test-app");
 
@@ -37,20 +35,20 @@ test("logs a store in and returns its verified profile", async () => {
   const invalid = await request(app)
     .post("/api/auth/login")
     .send({ store_code: "UNKNOWN", password: "bad" });
-  assert.equal(invalid.status, 401);
+  expect(invalid.statusCode).toBe(401);
 
   const login = await request(app)
     .post("/api/auth/login")
     .send({ store_code: "STORE-12345678", password: "StorePass123!" });
-  assert.equal(login.status, 200);
-  assert.equal(login.body.token_type, "Bearer");
+  expect(login.statusCode).toBe(200);
+  expect(login.body.token_type).toBe("Bearer");
 
   const profile = await request(app)
     .get("/api/auth/me")
     .set("Authorization", `Bearer ${login.body.token}`);
-  assert.equal(profile.status, 200);
-  assert.equal(profile.body.storeId, 1);
-  assert.equal(profile.body.role, "STORE");
+  expect(profile.statusCode).toBe(200);
+  expect(profile.body.storeId).toBe(1);
+  expect(profile.body.role).toBe("STORE");
 });
 
 test("blocks missing and invalid store authentication", async () => {
@@ -58,6 +56,6 @@ test("blocks missing and invalid store authentication", async () => {
   const invalid = await request(app)
     .get("/api/auth/me")
     .set("Authorization", "Bearer invalid");
-  assert.equal(missing.status, 401);
-  assert.equal(invalid.status, 401);
+  expect(missing.statusCode).toBe(401);
+  expect(invalid.statusCode).toBe(401);
 });

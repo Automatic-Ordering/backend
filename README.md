@@ -58,6 +58,31 @@ npm run seed:products
 
 `seed:admin`은 `ADMIN_USERNAME`, `ADMIN_PASSWORD` 환경 변수를 사용합니다.
 
+### 3-1. 테스트용 더미 데이터(Seed) 주입
+
+자동 발주 수량 계산(예상 판매량 − 현재고 − 입고 예정 수량)을 실제 데이터로 확인하려면
+점포 생성 이후 더미 데이터를 주입합니다. `STORE_ID`에 대상 점포 ID를 지정해 실행합니다.
+
+```bash
+STORE_ID=<생성된_점포_ID> npm run seed
+```
+
+`npm run seed`는 두 스크립트를 순차 실행합니다.
+
+- `seed-sales-history`: 최근 120일의 판매 이력 생성(오늘 제외, 점포에 등록된 전체 상품 대상)
+- `seed-inventory-stock`: 점포 재고의 현재 재고를 랜덤(기본 10~49)으로 설정
+
+선택 환경 변수:
+
+| 변수 | 설명 | 기본값 |
+| --- | --- | --- |
+| `STORE_ID` | 대상 점포 ID | 필수 |
+| `SEED` | 판매 이력 난수 시드 | `20261113` |
+| `STOCK` | 현재 재고 고정값(지정 시 랜덤 대신 적용) | 랜덤 |
+| `RAND_MIN` / `RAND_MAX` | 현재 재고 랜덤 범위 | `10` / `49` |
+| `SAFETY_STOCK` | 안전재고 값(미지정 시 기존 유지) | 기존 유지 |
+| `DRY_RUN` | `1`로 지정 시 변경 없이 미리보기만 수행 | 미리보기 아님 |
+
 ### 4. 서버 실행
 
 개발 모드:
@@ -107,7 +132,11 @@ Authorization: Bearer <access-token>
 npm test
 ```
 
-테스트는 `test/**/*.test.js`에 정의되어 있습니다.
+Jest로 실행됩니다. API 통합 테스트(supertest)는 `test/*.test.js`, 순수 로직 단위 테스트는 `test/unit/`에 정의되어 있습니다.
+
+```bash
+npm test -- --watch   # 감시 모드
+```
 
 ## 프로젝트 구조
 
@@ -121,7 +150,7 @@ backend/
 │   ├── routes/
 │   ├── services/
 │   └── utils/
-└── test/         # API 및 서비스 테스트
+└── test/         # API 통합 테스트 및 단위 테스트(test/unit)
 ```
 
 ## 주의 사항

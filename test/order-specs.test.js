@@ -1,5 +1,3 @@
-const assert = require("node:assert/strict");
-const test = require("node:test");
 const request = require("supertest");
 const { sequelize } = require("../config/database");
 const {
@@ -180,24 +178,24 @@ const buildItemInstance = (overrides = {}) => {
 
 test("spec endpoints require authentication and proper roles", async () => {
   const unauthorized = await request(app).get("/api/store/orders/specs");
-  assert.equal(unauthorized.status, 401);
+  expect(unauthorized.statusCode).toBe(401);
 
   setAdminAuthMock();
   const adminOnStoreRoutes = await request(app)
     .get("/api/store/orders/specs")
     .set("Authorization", `Bearer ${adminToken()}`);
-  assert.equal(adminOnStoreRoutes.status, 403);
+  expect(adminOnStoreRoutes.statusCode).toBe(403);
 
   setStoreAuthMock();
   const storeOnAdminList = await request(app)
     .get("/api/admin/orders/specs")
     .set("Authorization", `Bearer ${storeToken()}`);
-  assert.equal(storeOnAdminList.status, 403);
+  expect(storeOnAdminList.statusCode).toBe(403);
 
   const storeOnAdminDetail = await request(app)
     .get("/api/admin/orders/specs/101")
     .set("Authorization", `Bearer ${storeToken()}`);
-  assert.equal(storeOnAdminDetail.status, 403);
+  expect(storeOnAdminDetail.statusCode).toBe(403);
 });
 
 test("creates DRAFT specification from submitted items with server-side amounts", async () => {
@@ -256,37 +254,37 @@ test("creates DRAFT specification from submitted items with server-side amounts"
         ],
       });
 
-    assert.equal(response.status, 201);
-    assert.equal(response.body.order_spec_id, 101);
-    assert.equal(response.body.order_status, "DRAFT");
-    assert.match(response.body.order_number, /^OS-\d{8}-000101$/);
-    assert.equal(response.body.total_amount, 19800);
-    assert.equal(response.body.items.length, 2);
-    assert.equal(response.body.items[0].product_id, 1);
-    assert.equal(response.body.items[0].product_name, "참치마요 삼각김밥");
-    assert.equal(response.body.items[0].order_quantity, 10);
-    assert.equal(response.body.items[0].unit_price, 1500);
-    assert.equal(response.body.items[0].amount, 15000);
-    assert.equal(response.body.items[1].amount, 4800);
-    assert.equal(response.body.status_histories.length, 1);
-    assert.equal(response.body.status_histories[0].to_status, "DRAFT");
+    expect(response.statusCode).toBe(201);
+    expect(response.body.order_spec_id).toBe(101);
+    expect(response.body.order_status).toBe("DRAFT");
+    expect(response.body.order_number).toMatch(/^OS-\d{8}-000101$/);
+    expect(response.body.total_amount).toBe(19800);
+    expect(response.body.items.length).toBe(2);
+    expect(response.body.items[0].product_id).toBe(1);
+    expect(response.body.items[0].product_name).toBe("참치마요 삼각김밥");
+    expect(response.body.items[0].order_quantity).toBe(10);
+    expect(response.body.items[0].unit_price).toBe(1500);
+    expect(response.body.items[0].amount).toBe(15000);
+    expect(response.body.items[1].amount).toBe(4800);
+    expect(response.body.status_histories.length).toBe(1);
+    expect(response.body.status_histories[0].to_status).toBe("DRAFT");
 
-    assert.deepEqual(specCreateCalls[0].values, {
+    expect(specCreateCalls[0].values).toEqual({
       storeId: 1,
       orderStatus: "DRAFT",
       totalAmount: 19800,
     });
-    assert.ok(specCreateCalls[0].options.transaction);
-    assert.ok(bulkCreateCalls[0].options.transaction);
-    assert.equal(bulkCreateCalls[0].rows[0].orderQuantity, 10);
-    assert.equal(bulkCreateCalls[0].rows[1].unitPrice, 1200);
-    assert.equal(historyCalls[0].values.toStatus, "DRAFT");
+    expect(specCreateCalls[0].options.transaction).toBeTruthy();
+    expect(bulkCreateCalls[0].options.transaction).toBeTruthy();
+    expect(bulkCreateCalls[0].rows[0].orderQuantity).toBe(10);
+    expect(bulkCreateCalls[0].rows[1].unitPrice).toBe(1200);
+    expect(historyCalls[0].values.toStatus).toBe("DRAFT");
 
     const unregistered = await request(app)
       .post("/api/store/orders/specs")
       .set("Authorization", `Bearer ${storeToken()}`)
       .send({ items: [{ product_id: 999, quantity: 1 }] });
-    assert.equal(unregistered.status, 404);
+    expect(unregistered.statusCode).toBe(404);
 
     const duplicate = await request(app)
       .post("/api/store/orders/specs")
@@ -297,14 +295,14 @@ test("creates DRAFT specification from submitted items with server-side amounts"
           { product_id: 1, quantity: 2 },
         ],
       });
-    assert.equal(duplicate.status, 400);
-    assert.match(duplicate.body.message, /중복/);
+    expect(duplicate.statusCode).toBe(400);
+    expect(duplicate.body.message).toMatch(/중복/);
 
     const zeroQuantity = await request(app)
       .post("/api/store/orders/specs")
       .set("Authorization", `Bearer ${storeToken()}`)
       .send({ items: [{ product_id: 1, quantity: 0 }] });
-    assert.equal(zeroQuantity.status, 400);
+    expect(zeroQuantity.statusCode).toBe(400);
   } finally {
     restoreInventoryFindAll();
     restoreSpecCreate();
@@ -365,13 +363,13 @@ test("creates DRAFT specification from auto order recommendations", async () => 
       .set("Authorization", `Bearer ${storeToken()}`)
       .send({});
 
-    assert.equal(response.status, 201);
-    assert.equal(response.body.order_status, "DRAFT");
-    assert.equal(response.body.items.length, 1);
-    assert.equal(response.body.items[0].product_id, 1);
-    assert.equal(response.body.items[0].order_quantity, 5);
-    assert.equal(response.body.items[0].amount, 7500);
-    assert.equal(response.body.total_amount, 7500);
+    expect(response.statusCode).toBe(201);
+    expect(response.body.order_status).toBe("DRAFT");
+    expect(response.body.items.length).toBe(1);
+    expect(response.body.items[0].product_id).toBe(1);
+    expect(response.body.items[0].order_quantity).toBe(5);
+    expect(response.body.items[0].amount).toBe(7500);
+    expect(response.body.total_amount).toBe(7500);
 
     const restoreInventoryCount2 = overrideMethod(
       StoreInventory,
@@ -383,8 +381,8 @@ test("creates DRAFT specification from auto order recommendations", async () => 
         .post("/api/store/orders/specs")
         .set("Authorization", `Bearer ${storeToken()}`)
         .send({});
-      assert.equal(empty.status, 400);
-      assert.match(empty.body.message, /발주 대상 상품이 없/);
+      expect(empty.statusCode).toBe(400);
+      expect(empty.body.message).toMatch(/발주 대상 상품이 없/);
     } finally {
       restoreInventoryCount2();
     }
@@ -423,8 +421,8 @@ test("items are editable only while DRAFT", async () => {
     OrderSpecification,
     "findOne",
     async (args) => {
-      assert.equal(args.where.orderSpecId, 101);
-      assert.equal(args.where.storeId, 1);
+      expect(args.where.orderSpecId).toBe(101);
+      expect(args.where.storeId).toBe(1);
       return draftSpec;
     },
   );
@@ -451,11 +449,11 @@ test("items are editable only while DRAFT", async () => {
       .set("Authorization", `Bearer ${storeToken()}`)
       .send({ items: [{ product_id: 1, quantity: 7 }] });
 
-    assert.equal(response.status, 200);
-    assert.equal(destroyCalls.length, 1);
-    assert.equal(bulkCreateCalls[0].rows[0].orderQuantity, 7);
-    assert.equal(response.body.total_amount, 10500);
-    assert.equal(response.body.item_count, 1);
+    expect(response.statusCode).toBe(200);
+    expect(destroyCalls.length).toBe(1);
+    expect(bulkCreateCalls[0].rows[0].orderQuantity).toBe(7);
+    expect(response.body.total_amount).toBe(10500);
+    expect(response.body.item_count).toBe(1);
 
     const requestedSpec = buildSpecInstance({
       orderSpecId: 101,
@@ -472,9 +470,9 @@ test("items are editable only while DRAFT", async () => {
         .set("Authorization", `Bearer ${storeToken()}`)
         .send({ items: [{ product_id: 1, quantity: 7 }] });
 
-      assert.equal(blocked.status, 409);
-      assert.equal(blocked.body.error, "SPEC_NOT_EDITABLE");
-      assert.match(blocked.body.message, /제출된 발주 명세서/);
+      expect(blocked.statusCode).toBe(409);
+      expect(blocked.body.error).toBe("SPEC_NOT_EDITABLE");
+      expect(blocked.body.message).toMatch(/제출된 발주 명세서/);
     } finally {
       restoreSpecFindOne2();
     }
@@ -516,14 +514,14 @@ test("submit moves DRAFT to REQUESTED and records request date", async () => {
       .post("/api/store/orders/specs/101/submit")
       .set("Authorization", `Bearer ${storeToken()}`);
 
-    assert.equal(response.status, 200);
-    assert.equal(response.body.order_status, "REQUESTED");
-    assert.ok(response.body.request_date);
-    assert.equal(spec.updateCalls[0].values.orderStatus, "REQUESTED");
-    assert.ok(spec.updateCalls[0].values.requestDate instanceof Date);
-    assert.equal(historyCalls[0].values.fromStatus, "DRAFT");
-    assert.equal(historyCalls[0].values.toStatus, "REQUESTED");
-    assert.ok(historyCalls[0].options.transaction);
+    expect(response.statusCode).toBe(200);
+    expect(response.body.order_status).toBe("REQUESTED");
+    expect(response.body.request_date).toBeTruthy();
+    expect(spec.updateCalls[0].values.orderStatus).toBe("REQUESTED");
+    expect(spec.updateCalls[0].values.requestDate).toBeInstanceOf(Date);
+    expect(historyCalls[0].values.fromStatus).toBe("DRAFT");
+    expect(historyCalls[0].values.toStatus).toBe("REQUESTED");
+    expect(historyCalls[0].options.transaction).toBeTruthy();
 
     const emptySpec = buildSpecInstance({
       orderSpecId: 102,
@@ -539,7 +537,7 @@ test("submit moves DRAFT to REQUESTED and records request date", async () => {
       const emptyItems = await request(app)
         .post("/api/store/orders/specs/102/submit")
         .set("Authorization", `Bearer ${storeToken()}`);
-      assert.equal(emptyItems.status, 400);
+      expect(emptyItems.statusCode).toBe(400);
     } finally {
       restoreSpecFindOne2();
     }
@@ -558,8 +556,8 @@ test("submit moves DRAFT to REQUESTED and records request date", async () => {
       const duplicateSubmit = await request(app)
         .post("/api/store/orders/specs/103/submit")
         .set("Authorization", `Bearer ${storeToken()}`);
-      assert.equal(duplicateSubmit.status, 409);
-      assert.equal(duplicateSubmit.body.error, "INVALID_SPEC_STATUS");
+      expect(duplicateSubmit.statusCode).toBe(409);
+      expect(duplicateSubmit.body.error).toBe("INVALID_SPEC_STATUS");
     } finally {
       restoreSpecFindOne3();
     }
@@ -603,17 +601,17 @@ test("store confirms DRAFT specification", async () => {
       .post("/api/store/orders/specs/101/confirm")
       .set("Authorization", `Bearer ${storeToken()}`);
 
-    assert.equal(response.status, 200);
-    assert.equal(response.body.order_status, "PENDING_RECEIPT");
-    assert.equal(response.body.admin_id, null);
-    assert.ok(response.body.confirmed_at);
-    assert.equal(findOneCalls[0].where.orderSpecId, 101);
-    assert.equal(findOneCalls[0].where.storeId, 1);
-    assert.equal(historyCalls[0].values.fromStatus, "DRAFT");
-    assert.equal(historyCalls[0].values.toStatus, "PENDING_RECEIPT");
-    assert.equal(historyCalls[0].values.changedByAdminId, null);
-    assert.equal(historyCalls[0].values.note, "발주 확정");
-    assert.ok(historyCalls[0].options.transaction);
+    expect(response.statusCode).toBe(200);
+    expect(response.body.order_status).toBe("PENDING_RECEIPT");
+    expect(response.body.admin_id).toBeNull();
+    expect(response.body.confirmed_at).toBeTruthy();
+    expect(findOneCalls[0].where.orderSpecId).toBe(101);
+    expect(findOneCalls[0].where.storeId).toBe(1);
+    expect(historyCalls[0].values.fromStatus).toBe("DRAFT");
+    expect(historyCalls[0].values.toStatus).toBe("PENDING_RECEIPT");
+    expect(historyCalls[0].values.changedByAdminId).toBeNull();
+    expect(historyCalls[0].values.note).toBe("발주 확정");
+    expect(historyCalls[0].options.transaction).toBeTruthy();
 
     const confirmedSpec = buildSpecInstance({
       orderSpecId: 101,
@@ -629,8 +627,8 @@ test("store confirms DRAFT specification", async () => {
       const duplicateConfirm = await request(app)
         .post("/api/store/orders/specs/101/confirm")
         .set("Authorization", `Bearer ${storeToken()}`);
-      assert.equal(duplicateConfirm.status, 409);
-      assert.equal(duplicateConfirm.body.error, "INVALID_SPEC_STATUS");
+      expect(duplicateConfirm.statusCode).toBe(409);
+      expect(duplicateConfirm.body.error).toBe("INVALID_SPEC_STATUS");
     } finally {
       restoreSpecFindOne2();
     }
@@ -643,8 +641,8 @@ test("store confirms DRAFT specification", async () => {
       OrderSpecification,
       "findOne",
       async (args) => {
-        assert.equal(args.where.storeId, 1);
-        assert.equal(args.where.orderSpecId, 999);
+        expect(args.where.storeId).toBe(1);
+        expect(args.where.orderSpecId).toBe(999);
         return null;
       },
     );
@@ -652,8 +650,8 @@ test("store confirms DRAFT specification", async () => {
       const notFound = await request(app)
         .post("/api/store/orders/specs/999/confirm")
         .set("Authorization", `Bearer ${storeToken()}`);
-      assert.equal(notFound.status, 404);
-      assert.equal(otherStoreSpec.orderStatus, "DRAFT");
+      expect(notFound.statusCode).toBe(404);
+      expect(otherStoreSpec.orderStatus).toBe("DRAFT");
     } finally {
       restoreSpecFindOne3();
     }
@@ -670,18 +668,18 @@ test("admin approve, reject and issue endpoints are no longer available", async 
   const approve = await request(app)
     .post("/api/admin/orders/specs/101/approve")
     .set("Authorization", `Bearer ${adminToken()}`);
-  assert.equal(approve.status, 404);
+  expect(approve.statusCode).toBe(404);
 
   const reject = await request(app)
     .post("/api/admin/orders/specs/101/reject")
     .set("Authorization", `Bearer ${adminToken()}`)
     .send({ reason: "사유" });
-  assert.equal(reject.status, 404);
+  expect(reject.statusCode).toBe(404);
 
   const issue = await request(app)
     .post("/api/admin/orders/specs/101/issue")
     .set("Authorization", `Bearer ${adminToken()}`);
-  assert.equal(issue.status, 404);
+  expect(issue.statusCode).toBe(404);
 });
 
 test("admin lists specifications with filters and pagination", async () => {
@@ -717,25 +715,25 @@ test("admin lists specifications with filters and pagination", async () => {
       .get("/api/admin/orders/specs?store_id=2&status=REQUESTED&page=1&limit=10")
       .set("Authorization", `Bearer ${adminToken()}`);
 
-    assert.equal(response.status, 200);
-    assert.equal(response.body.total, 1);
-    assert.equal(response.body.items.length, 1);
-    assert.equal(response.body.items[0].store_name, "Store B");
-    assert.equal(response.body.items[0].item_count, 1);
-    assert.equal(findAllCalls[0].where.storeId, 2);
-    assert.equal(findAllCalls[0].where.orderStatus, "REQUESTED");
-    assert.equal(findAllCalls[0].limit, 10);
-    assert.equal(countCalls[0].where.storeId, 2);
+    expect(response.statusCode).toBe(200);
+    expect(response.body.total).toBe(1);
+    expect(response.body.items.length).toBe(1);
+    expect(response.body.items[0].store_name).toBe("Store B");
+    expect(response.body.items[0].item_count).toBe(1);
+    expect(findAllCalls[0].where.storeId).toBe(2);
+    expect(findAllCalls[0].where.orderStatus).toBe("REQUESTED");
+    expect(findAllCalls[0].limit).toBe(10);
+    expect(countCalls[0].where.storeId).toBe(2);
 
     const invalidStatus = await request(app)
       .get("/api/admin/orders/specs?status=NOPE")
       .set("Authorization", `Bearer ${adminToken()}`);
-    assert.equal(invalidStatus.status, 400);
+    expect(invalidStatus.statusCode).toBe(400);
 
     const invalidStore = await request(app)
       .get("/api/admin/orders/specs?store_id=abc")
       .set("Authorization", `Bearer ${adminToken()}`);
-    assert.equal(invalidStore.status, 400);
+    expect(invalidStore.statusCode).toBe(400);
   } finally {
     restoreSpecFindAll();
     restoreSpecCount();
@@ -775,21 +773,21 @@ test("store list is scoped and detail blocks other stores", async () => {
       .get("/api/store/orders/specs")
       .set("Authorization", `Bearer ${storeToken()}`);
 
-    assert.equal(response.status, 200);
-    assert.equal(findAllCalls[0].where.storeId, 1);
-    assert.equal(response.body.items[0].store_id, 1);
+    expect(response.statusCode).toBe(200);
+    expect(findAllCalls[0].where.storeId).toBe(1);
+    expect(response.body.items[0].store_id).toBe(1);
 
     const pendingReceipts = await request(app)
       .get("/api/store/orders/specs/pending-receipts")
       .set("Authorization", `Bearer ${storeToken()}`);
-    assert.equal(pendingReceipts.status, 200);
-    assert.equal(findAllCalls[1].where.orderStatus, "PENDING_RECEIPT");
-    assert.equal(findAllCalls[1].where.storeId, 1);
+    expect(pendingReceipts.statusCode).toBe(200);
+    expect(findAllCalls[1].where.orderStatus).toBe("PENDING_RECEIPT");
+    expect(findAllCalls[1].where.storeId).toBe(1);
 
     const invalidStatus = await request(app)
       .get("/api/store/orders/specs?status=WRONG")
       .set("Authorization", `Bearer ${storeToken()}`);
-    assert.equal(invalidStatus.status, 400);
+    expect(invalidStatus.statusCode).toBe(400);
   } finally {
     restoreSpecFindAll();
     restoreSpecCount();
@@ -809,9 +807,9 @@ test("store list is scoped and detail blocks other stores", async () => {
       .get("/api/store/orders/specs/999")
       .set("Authorization", `Bearer ${storeToken()}`);
 
-    assert.equal(otherStoreSpec.status, 404);
-    assert.equal(findOneCalls[0].where.storeId, 1);
-    assert.equal(findOneCalls[0].where.orderSpecId, 999);
+    expect(otherStoreSpec.statusCode).toBe(404);
+    expect(findOneCalls[0].where.storeId).toBe(1);
+    expect(findOneCalls[0].where.orderSpecId).toBe(999);
   } finally {
     restoreSpecFindOne();
   }
@@ -846,8 +844,8 @@ test("receipt completes order and increases store inventory", async () => {
     "findOne",
     async (args) => {
       receiptFindOneArgs = args;
-      assert.equal(args.where.orderSpecId, 101);
-      assert.equal(args.where.storeId, 1);
+      expect(args.where.orderSpecId).toBe(101);
+      expect(args.where.storeId).toBe(1);
       return spec;
     },
   );
@@ -885,30 +883,30 @@ test("receipt completes order and increases store inventory", async () => {
         ],
       });
 
-    assert.equal(response.status, 200);
-    assert.equal(response.body.order_status, "RECEIVED");
-    assert.ok(response.body.received_at);
-    assert.equal(response.body.comparison.length, 2);
-    assert.equal(response.body.comparison[0].order_quantity, 10);
-    assert.equal(response.body.comparison[0].received_quantity, 8);
-    assert.equal(response.body.comparison[0].difference, -2);
-    assert.equal(response.body.comparison[1].difference, 0);
-    assert.equal(response.body.items[0].received_quantity, 8);
+    expect(response.statusCode).toBe(200);
+    expect(response.body.order_status).toBe("RECEIVED");
+    expect(response.body.received_at).toBeTruthy();
+    expect(response.body.comparison.length).toBe(2);
+    expect(response.body.comparison[0].order_quantity).toBe(10);
+    expect(response.body.comparison[0].received_quantity).toBe(8);
+    expect(response.body.comparison[0].difference).toBe(-2);
+    expect(response.body.comparison[1].difference).toBe(0);
+    expect(response.body.items[0].received_quantity).toBe(8);
 
-    assert.equal(receiptFindOneArgs.lock, true);
-    assert.ok(receiptFindOneArgs.transaction);
-    assert.equal(incrementCalls.length, 2);
-    assert.equal(incrementCalls[0].field, "currentStock");
-    assert.equal(incrementCalls[0].options.by, 8);
-    assert.deepEqual(incrementCalls[0].where, { storeId: 1, productId: 1 });
-    assert.equal(incrementCalls[1].options.by, 4);
-    assert.equal(item1.saveCalls.length, 1);
-    assert.ok(item1.saveCalls[0].transaction);
-    assert.equal(item1.receivedQuantity, 8);
-    assert.equal(historyCalls[0].fromStatus, "PENDING_RECEIPT");
-    assert.equal(historyCalls[0].toStatus, "RECEIVED");
-    assert.equal(historyCalls[0].changedByAdminId, null);
-    assert.equal(historyCalls[0].note, "입고 완료");
+    expect(receiptFindOneArgs.lock).toBe(true);
+    expect(receiptFindOneArgs.transaction).toBeTruthy();
+    expect(incrementCalls.length).toBe(2);
+    expect(incrementCalls[0].field).toBe("currentStock");
+    expect(incrementCalls[0].options.by).toBe(8);
+    expect(incrementCalls[0].where).toEqual({ storeId: 1, productId: 1 });
+    expect(incrementCalls[1].options.by).toBe(4);
+    expect(item1.saveCalls.length).toBe(1);
+    expect(item1.saveCalls[0].transaction).toBeTruthy();
+    expect(item1.receivedQuantity).toBe(8);
+    expect(historyCalls[0].fromStatus).toBe("PENDING_RECEIPT");
+    expect(historyCalls[0].toStatus).toBe("RECEIVED");
+    expect(historyCalls[0].changedByAdminId).toBeNull();
+    expect(historyCalls[0].note).toBe("입고 완료");
   } finally {
     restoreSpecFindOne();
     restoreInventoryFindOne();
@@ -938,8 +936,8 @@ test("duplicate receipt and invalid receipt inputs are blocked", async () => {
       .set("Authorization", `Bearer ${storeToken()}`)
       .send({ items: [{ product_id: 1, received_quantity: 5 }] });
 
-    assert.equal(duplicate.status, 409);
-    assert.equal(duplicate.body.error, "ALREADY_RECEIVED");
+    expect(duplicate.statusCode).toBe(409);
+    expect(duplicate.body.error).toBe("ALREADY_RECEIVED");
   } finally {
     restoreSpecFindOne();
   }
@@ -968,8 +966,8 @@ test("duplicate receipt and invalid receipt inputs are blocked", async () => {
       .post("/api/store/orders/specs/102/receipt")
       .set("Authorization", `Bearer ${storeToken()}`)
       .send({ items: [{ product_id: 1, received_quantity: 5 }] });
-    assert.equal(missingItem.status, 400);
-    assert.match(missingItem.body.message, /누락/);
+    expect(missingItem.statusCode).toBe(400);
+    expect(missingItem.body.message).toMatch(/누락/);
 
     const unexpectedItem = await request(app)
       .post("/api/store/orders/specs/102/receipt")
@@ -981,14 +979,14 @@ test("duplicate receipt and invalid receipt inputs are blocked", async () => {
           { product_id: 999, received_quantity: 1 },
         ],
       });
-    assert.equal(unexpectedItem.status, 400);
-    assert.match(unexpectedItem.body.message, /없는 상품/);
+    expect(unexpectedItem.statusCode).toBe(400);
+    expect(unexpectedItem.body.message).toMatch(/없는 상품/);
 
     const negativeQuantity = await request(app)
       .post("/api/store/orders/specs/102/receipt")
       .set("Authorization", `Bearer ${storeToken()}`)
       .send({ items: [{ product_id: 1, received_quantity: -1 }] });
-    assert.equal(negativeQuantity.status, 400);
+    expect(negativeQuantity.statusCode).toBe(400);
 
     const requestedSpec = buildSpecInstance({
       orderSpecId: 103,
@@ -1005,9 +1003,9 @@ test("duplicate receipt and invalid receipt inputs are blocked", async () => {
         .post("/api/store/orders/specs/103/receipt")
         .set("Authorization", `Bearer ${storeToken()}`)
         .send({ items: [{ product_id: 1, received_quantity: 5 }] });
-      assert.equal(wrongStatus.status, 409);
-      assert.equal(wrongStatus.body.error, "INVALID_SPEC_STATUS");
-      assert.equal(requestedSpec.updateCalls.length, 0);
+      expect(wrongStatus.statusCode).toBe(409);
+      expect(wrongStatus.body.error).toBe("INVALID_SPEC_STATUS");
+      expect(requestedSpec.updateCalls.length).toBe(0);
     } finally {
       restoreSpecFindOne3();
     }
@@ -1048,6 +1046,7 @@ test("receipt failure rolls back the transaction", async () => {
       },
     }),
   );
+  const errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
 
   try {
     const response = await request(app)
@@ -1055,16 +1054,17 @@ test("receipt failure rolls back the transaction", async () => {
       .set("Authorization", `Bearer ${storeToken()}`)
       .send({ items: [{ product_id: 1, received_quantity: 8 }] });
 
-    assert.equal(response.status, 500);
-    assert.equal(getCapturedRollbackCount(), 1);
-    assert.equal(getCapturedCommitCount(), 0);
-    assert.equal(spec.saveCalls.length, 0);
-    assert.equal(spec.orderStatus, "PENDING_RECEIPT");
-    assert.equal(spec.receivedAt, null);
+    expect(response.statusCode).toBe(500);
+    expect(getCapturedRollbackCount()).toBe(1);
+    expect(getCapturedCommitCount()).toBe(0);
+    expect(spec.saveCalls.length).toBe(0);
+    expect(spec.orderStatus).toBe("PENDING_RECEIPT");
+    expect(spec.receivedAt).toBeNull();
   } finally {
     restoreSpecFindOne();
     restoreInventoryFindOne();
     sequelize.transaction = originalTransaction;
+    errorSpy.mockRestore();
   }
 });
 
@@ -1089,9 +1089,9 @@ test("receipt accepts only PENDING_RECEIPT specifications", async () => {
         .set("Authorization", `Bearer ${storeToken()}`)
         .send({ items: [{ product_id: 1, received_quantity: 1 }] });
 
-      assert.equal(response.status, 409);
-      assert.equal(response.body.error, "INVALID_SPEC_STATUS");
-      assert.equal(specs.get(specId).updateCalls.length, 0);
+      expect(response.statusCode).toBe(409);
+      expect(response.body.error).toBe("INVALID_SPEC_STATUS");
+      expect(specs.get(specId).updateCalls.length).toBe(0);
     }
   } finally {
     restoreSpecFindOne();
@@ -1123,9 +1123,9 @@ test("store can cancel confirmed specification before receipt", async () => {
       .post("/api/store/orders/specs/101/cancel")
       .set("Authorization", `Bearer ${storeToken()}`);
 
-    assert.equal(response.status, 200);
-    assert.equal(response.body.order_status, "CANCELLED");
-    assert.equal(approvedSpec.updateCalls[0].values.orderStatus, "CANCELLED");
+    expect(response.statusCode).toBe(200);
+    expect(response.body.order_status).toBe("CANCELLED");
+    expect(approvedSpec.updateCalls[0].values.orderStatus).toBe("CANCELLED");
 
     const receivedSpec = buildSpecInstance({
       orderSpecId: 102,
@@ -1140,9 +1140,9 @@ test("store can cancel confirmed specification before receipt", async () => {
       const blocked = await request(app)
         .post("/api/store/orders/specs/102/cancel")
         .set("Authorization", `Bearer ${storeToken()}`);
-      assert.equal(blocked.status, 409);
-      assert.equal(blocked.body.error, "INVALID_SPEC_STATUS");
-      assert.equal(receivedSpec.updateCalls.length, 0);
+      expect(blocked.statusCode).toBe(409);
+      expect(blocked.body.error).toBe("INVALID_SPEC_STATUS");
+      expect(receivedSpec.updateCalls.length).toBe(0);
     } finally {
       restoreSpecFindOne2();
     }
@@ -1177,9 +1177,9 @@ test("store can cancel draft specification", async () => {
       .post("/api/store/orders/specs/101/cancel")
       .set("Authorization", `Bearer ${storeToken()}`);
 
-    assert.equal(response.status, 200);
-    assert.equal(response.body.order_status, "CANCELLED");
-    assert.equal(draftSpec.updateCalls[0].values.orderStatus, "CANCELLED");
+    expect(response.statusCode).toBe(200);
+    expect(response.body.order_status).toBe("CANCELLED");
+    expect(draftSpec.updateCalls[0].values.orderStatus).toBe("CANCELLED");
   } finally {
     restoreSpecFindOne();
     restoreHistoryCreate();

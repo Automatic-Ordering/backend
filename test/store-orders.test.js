@@ -1,5 +1,3 @@
-const assert = require("node:assert/strict");
-const test = require("node:test");
 const request = require("supertest");
 const { sequelize } = require("../config/database");
 const {
@@ -92,13 +90,13 @@ test("store orders endpoints require store authentication", async () => {
   const unauthorized = await request(app).get(
     "/api/store/orders/recommendations",
   );
-  assert.equal(unauthorized.status, 401);
+  expect(unauthorized.statusCode).toBe(401);
 
   setStoreAuthMock();
   const forbidden = await request(app)
     .get("/api/store/orders")
     .set("Authorization", `Bearer ${adminToken()}`);
-  assert.equal(forbidden.status, 403);
+  expect(forbidden.statusCode).toBe(403);
 });
 
 test("returns auto order recommendations with calculated values", async () => {
@@ -158,54 +156,54 @@ test("returns auto order recommendations with calculated values", async () => {
       .get("/api/store/orders/recommendations?page=1&limit=20")
       .set("Authorization", `Bearer ${storeToken()}`);
 
-    assert.equal(response.status, 200);
-    assert.equal(response.body.items.length, 2);
-    assert.equal(response.body.total, 2);
-    assert.equal(response.body.page, 1);
-    assert.equal(response.body.limit, 20);
-    assert.equal(response.body.total_pages, 1);
+    expect(response.statusCode).toBe(200);
+    expect(response.body.items.length).toBe(2);
+    expect(response.body.total).toBe(2);
+    expect(response.body.page).toBe(1);
+    expect(response.body.limit).toBe(20);
+    expect(response.body.total_pages).toBe(1);
 
     const first = response.body.items[0];
-    assert.equal(first.product_id, 1);
-    assert.equal(first.current_stock, 3);
-    assert.equal(first.incoming_quantity, 0);
-    assert.ok(Math.abs(first.predicted_demand - 4) < 1e-9);
-    assert.equal(first.lead_time_days, 2);
-    assert.equal(first.forecast_period_days, 1);
-    assert.equal(first.forecast_coverage_days, 1);
-    assert.equal(first.order_unit, 5);
-    assert.equal(first.target_stock, 4);
-    assert.equal(first.raw_order_quantity, 1);
-    assert.equal(first.order_quantity, 5);
-    assert.equal(first.needs_order, true);
-    assert.equal(first.applied_safety_stock, 0);
-    assert.equal(first.safety_stock_source, "NOT_APPLIED");
-    assert.deepEqual(first.data_warning, []);
+    expect(first.product_id).toBe(1);
+    expect(first.current_stock).toBe(3);
+    expect(first.incoming_quantity).toBe(0);
+    expect(first.predicted_demand).toBeCloseTo(4, 9);
+    expect(first.lead_time_days).toBe(2);
+    expect(first.forecast_period_days).toBe(1);
+    expect(first.forecast_coverage_days).toBe(1);
+    expect(first.order_unit).toBe(5);
+    expect(first.target_stock).toBe(4);
+    expect(first.raw_order_quantity).toBe(1);
+    expect(first.order_quantity).toBe(5);
+    expect(first.needs_order).toBe(true);
+    expect(first.applied_safety_stock).toBe(0);
+    expect(first.safety_stock_source).toBe("NOT_APPLIED");
+    expect(first.data_warning).toEqual([]);
 
     const second = response.body.items[1];
-    assert.equal(second.product_id, 2);
-    assert.equal(second.order_quantity, 0);
-    assert.equal(second.needs_order, false);
-    assert.equal(second.configured_safety_stock, 5);
-    assert.equal(second.applied_safety_stock, 0);
-    assert.equal(second.safety_stock_source, "NOT_APPLIED");
-    assert.deepEqual(second.data_warning, ["NO_SALES_DATA"]);
+    expect(second.product_id).toBe(2);
+    expect(second.order_quantity).toBe(0);
+    expect(second.needs_order).toBe(false);
+    expect(second.configured_safety_stock).toBe(5);
+    expect(second.applied_safety_stock).toBe(0);
+    expect(second.safety_stock_source).toBe("NOT_APPLIED");
+    expect(second.data_warning).toEqual(["NO_SALES_DATA"]);
 
-    assert.equal(salesFindAllCalls.length, 1);
-    assert.equal(salesFindAllCalls[0].where.storeId, 1);
+    expect(salesFindAllCalls.length).toBe(1);
+    expect(salesFindAllCalls[0].where.storeId).toBe(1);
     const inSymbol = Object.getOwnPropertySymbols(
       salesFindAllCalls[0].where.productId,
     )[0];
-    assert.deepEqual(salesFindAllCalls[0].where.productId[inSymbol], [1, 2]);
-    assert.equal(inventoryFindAllCalls[0].limit, 20);
-    assert.equal(inventoryFindAllCalls[0].offset, 0);
-    assert.equal(inventoryCountCalls[0].where.storeId, 1);
+    expect(salesFindAllCalls[0].where.productId[inSymbol]).toEqual([1, 2]);
+    expect(inventoryFindAllCalls[0].limit).toBe(20);
+    expect(inventoryFindAllCalls[0].offset).toBe(0);
+    expect(inventoryCountCalls[0].where.storeId).toBe(1);
 
     const invalidPage = await request(app)
       .get("/api/store/orders/recommendations?page=0")
       .set("Authorization", `Bearer ${storeToken()}`);
-    assert.equal(invalidPage.status, 400);
-    assert.match(invalidPage.body.message, /page/);
+    expect(invalidPage.statusCode).toBe(400);
+    expect(invalidPage.body.message).toMatch(/page/);
   } finally {
     Sales.findAll = originalSalesFindAll;
     StoreInventory.findAll = originalInventoryFindAll;
@@ -261,23 +259,23 @@ test("incoming quantity aggregates legacy orders and order specifications withou
       .get("/api/store/orders/recommendations?page=1&limit=20")
       .set("Authorization", `Bearer ${storeToken()}`);
 
-    assert.equal(response.status, 200);
-    assert.equal(response.body.items[0].incoming_quantity, 17);
-    assert.equal(queryCalls.length, 1);
+    expect(response.statusCode).toBe(200);
+    expect(response.body.items[0].incoming_quantity).toBe(17);
+    expect(queryCalls.length).toBe(1);
 
     const { sql, options } = queryCalls[0];
-    assert.match(sql, /UNION ALL/);
-    assert.match(sql, /FROM orders/);
-    assert.match(sql, /order_specification_items/);
-    assert.match(sql, /order_specifications/);
-    assert.equal(sql.split("FROM orders").length - 1, 1);
-    assert.equal(sql.split("order_specification_items").length - 1, 1);
-    assert.equal(options.replacements.storeId, 1);
-    assert.deepEqual(options.replacements.openOrderStatuses, [
+    expect(sql).toMatch(/UNION ALL/);
+    expect(sql).toMatch(/FROM orders/);
+    expect(sql).toMatch(/order_specification_items/);
+    expect(sql).toMatch(/order_specifications/);
+    expect(sql.split("FROM orders").length - 1).toBe(1);
+    expect(sql.split("order_specification_items").length - 1).toBe(1);
+    expect(options.replacements.storeId).toBe(1);
+    expect(options.replacements.openOrderStatuses).toEqual([
       "PENDING",
       "ORDERED",
     ]);
-    assert.deepEqual(options.replacements.openSpecStatuses, [
+    expect(options.replacements.openSpecStatuses).toEqual([
       "REQUESTED",
       "APPROVED",
       "ORDERED",
@@ -318,13 +316,13 @@ test("recommendations search filters products server-side", async () => {
       .get("/api/store/orders/recommendations?search=도시락&page=1&limit=20")
       .set("Authorization", `Bearer ${storeToken()}`);
 
-    assert.equal(response.status, 200);
-    assert.deepEqual(response.body.items, []);
-    assert.equal(response.body.total, 1);
-    assert.equal(countCalls[0].where.storeId, 1);
-    assert.ok(countCalls[0].include);
-    assert.ok(findAllCalls[0].include[0].where);
-    assert.equal(findAllCalls[0].include[0].required, true);
+    expect(response.statusCode).toBe(200);
+    expect(response.body.items).toEqual([]);
+    expect(response.body.total).toBe(1);
+    expect(countCalls[0].where.storeId).toBe(1);
+    expect(countCalls[0].include).toBeTruthy();
+    expect(findAllCalls[0].include[0].where).toBeTruthy();
+    expect(findAllCalls[0].include[0].required).toBe(true);
   } finally {
     Sales.findAll = originalSalesFindAll;
     StoreInventory.findAll = originalInventoryFindAll;
@@ -340,7 +338,7 @@ test("recommendation detail validates product id and ownership", async () => {
   const badId = await request(app)
     .get("/api/store/orders/recommendations/abc")
     .set("Authorization", `Bearer ${storeToken()}`);
-  assert.equal(badId.status, 400);
+  expect(badId.statusCode).toBe(400);
 
   const originalInventoryFindAll = StoreInventory.findAll;
   const originalSalesFindAll = Sales.findAll;
@@ -354,8 +352,8 @@ test("recommendation detail validates product id and ownership", async () => {
     const notFound = await request(app)
       .get("/api/store/orders/recommendations/999")
       .set("Authorization", `Bearer ${storeToken()}`);
-    assert.equal(notFound.status, 404);
-    assert.equal(notFound.body.error, "NOT_FOUND");
+    expect(notFound.statusCode).toBe(404);
+    expect(notFound.body.error).toBe("NOT_FOUND");
   } finally {
     StoreInventory.findAll = originalInventoryFindAll;
     Sales.findAll = originalSalesFindAll;
@@ -394,17 +392,17 @@ test("recommendation detail includes calculation basis", async () => {
       .get("/api/store/orders/recommendations/1")
       .set("Authorization", `Bearer ${storeToken()}`);
 
-    assert.equal(response.status, 200);
-    assert.equal(response.body.calculation_basis.sales_window_days, 120);
-    assert.equal(response.body.calculation_basis.sales_series_days, 7);
-    assert.equal(response.body.calculation_basis.moving_average_sample_days, 7);
-    assert.equal(response.body.calculation_basis.forecast_period_days, 1);
-    assert.equal(response.body.calculation_basis.forecast_coverage_days, 1);
-    assert.equal(response.body.calculation_basis.same_weekday_sample_count, 0);
-    assert.equal(response.body.calculation_basis.recent_daily_sales.length, 7);
-    assert.equal(response.body.applied_settings.analysis_period_days, 120);
+    expect(response.statusCode).toBe(200);
+    expect(response.body.calculation_basis.sales_window_days).toBe(120);
+    expect(response.body.calculation_basis.sales_series_days).toBe(7);
+    expect(response.body.calculation_basis.moving_average_sample_days).toBe(7);
+    expect(response.body.calculation_basis.forecast_period_days).toBe(1);
+    expect(response.body.calculation_basis.forecast_coverage_days).toBe(1);
+    expect(response.body.calculation_basis.same_weekday_sample_count).toBe(0);
+    expect(response.body.calculation_basis.recent_daily_sales.length).toBe(7);
+    expect(response.body.applied_settings.analysis_period_days).toBe(120);
     // applied_settings는 저장된 설정값(참고용)이므로 계산에 사용되는 1과 달라도 된다.
-    assert.equal(response.body.applied_settings.forecast_period_days, 3);
+    expect(response.body.applied_settings.forecast_period_days).toBe(3);
   } finally {
     StoreInventory.findAll = originalInventoryFindAll;
     Sales.findAll = originalSalesFindAll;
@@ -459,19 +457,19 @@ test("confirm creates PENDING orders for registered products", async () => {
         ],
       });
 
-    assert.equal(response.status, 201);
-    assert.equal(response.body.length, 2);
-    assert.equal(response.body[0].order_status, "PENDING");
-    assert.equal(response.body[0].order_quantity, 10);
-    assert.equal(response.body[1].product_id, 2);
-    assert.equal(createCalls.length, 2);
-    assert.deepEqual(createCalls[0].values, {
+    expect(response.statusCode).toBe(201);
+    expect(response.body.length).toBe(2);
+    expect(response.body[0].order_status).toBe("PENDING");
+    expect(response.body[0].order_quantity).toBe(10);
+    expect(response.body[1].product_id).toBe(2);
+    expect(createCalls.length).toBe(2);
+    expect(createCalls[0].values).toEqual({
       storeId: 1,
       productId: 1,
       orderQuantity: 10,
       orderStatus: "PENDING",
     });
-    assert.ok(createCalls[0].options.transaction);
+    expect(createCalls[0].options.transaction).toBeTruthy();
   } finally {
     StoreInventory.findAll = originalInventoryFindAll;
     Order.create = originalOrderCreate;
@@ -502,26 +500,26 @@ test("confirm rejects invalid quantities and unregistered products", async () =>
       .post("/api/store/orders/confirm")
       .set("Authorization", `Bearer ${storeToken()}`)
       .send({ items: [] });
-    assert.equal(emptyItems.status, 400);
+    expect(emptyItems.statusCode).toBe(400);
 
     const zeroQuantity = await request(app)
       .post("/api/store/orders/confirm")
       .set("Authorization", `Bearer ${storeToken()}`)
       .send({ items: [{ product_id: 1, quantity: 0 }] });
-    assert.equal(zeroQuantity.status, 400);
-    assert.match(zeroQuantity.body.message, /quantity/);
+    expect(zeroQuantity.statusCode).toBe(400);
+    expect(zeroQuantity.body.message).toMatch(/quantity/);
 
     const negativeQuantity = await request(app)
       .post("/api/store/orders/confirm")
       .set("Authorization", `Bearer ${storeToken()}`)
       .send({ items: [{ product_id: 1, quantity: -5 }] });
-    assert.equal(negativeQuantity.status, 400);
+    expect(negativeQuantity.statusCode).toBe(400);
 
     const unregistered = await request(app)
       .post("/api/store/orders/confirm")
       .set("Authorization", `Bearer ${storeToken()}`)
       .send({ items: [{ product_id: 999, quantity: 1 }] });
-    assert.equal(unregistered.status, 404);
+    expect(unregistered.statusCode).toBe(404);
 
     const duplicate = await request(app)
       .post("/api/store/orders/confirm")
@@ -532,8 +530,8 @@ test("confirm rejects invalid quantities and unregistered products", async () =>
           { product_id: 1, quantity: 2 },
         ],
       });
-    assert.equal(duplicate.status, 400);
-    assert.match(duplicate.body.message, /중복/);
+    expect(duplicate.statusCode).toBe(400);
+    expect(duplicate.body.message).toMatch(/중복/);
   } finally {
     StoreInventory.findAll = originalInventoryFindAll;
     Order.create = originalOrderCreate;
@@ -571,51 +569,51 @@ test("order history is paginated and scoped to the authenticated store", async (
     const response = await request(app)
       .get("/api/store/orders")
       .set("Authorization", `Bearer ${storeToken()}`);
-    assert.equal(response.status, 200);
-    assert.equal(response.body.items.length, 1);
-    assert.equal(response.body.items[0].order_id, 1);
-    assert.equal(response.body.items[0].product_name, "참치마요 삼각김밥");
-    assert.equal(response.body.items[0].order_status, "PENDING");
-    assert.equal(response.body.total, 1);
-    assert.equal(response.body.page, 1);
-    assert.equal(response.body.limit, 20);
-    assert.equal(response.body.total_pages, 1);
-    assert.equal(findAllCalls[0].where.storeId, 1);
-    assert.equal(findAllCalls[0].limit, 20);
-    assert.equal(findAllCalls[0].offset, 0);
-    assert.equal(countCalls[0].where.storeId, 1);
+    expect(response.statusCode).toBe(200);
+    expect(response.body.items.length).toBe(1);
+    expect(response.body.items[0].order_id).toBe(1);
+    expect(response.body.items[0].product_name).toBe("참치마요 삼각김밥");
+    expect(response.body.items[0].order_status).toBe("PENDING");
+    expect(response.body.total).toBe(1);
+    expect(response.body.page).toBe(1);
+    expect(response.body.limit).toBe(20);
+    expect(response.body.total_pages).toBe(1);
+    expect(findAllCalls[0].where.storeId).toBe(1);
+    expect(findAllCalls[0].limit).toBe(20);
+    expect(findAllCalls[0].offset).toBe(0);
+    expect(countCalls[0].where.storeId).toBe(1);
 
     const filtered = await request(app)
       .get("/api/store/orders?status=ORDERED")
       .set("Authorization", `Bearer ${storeToken()}`);
-    assert.equal(filtered.status, 200);
-    assert.equal(findAllCalls[1].where.orderStatus, "ORDERED");
-    assert.equal(countCalls[1].where.orderStatus, "ORDERED");
+    expect(filtered.statusCode).toBe(200);
+    expect(findAllCalls[1].where.orderStatus).toBe("ORDERED");
+    expect(countCalls[1].where.orderStatus).toBe("ORDERED");
 
     const paged = await request(app)
       .get("/api/store/orders?page=2&limit=1")
       .set("Authorization", `Bearer ${storeToken()}`);
-    assert.equal(paged.status, 200);
-    assert.equal(findAllCalls[2].limit, 1);
-    assert.equal(findAllCalls[2].offset, 1);
-    assert.equal(paged.body.page, 2);
+    expect(paged.statusCode).toBe(200);
+    expect(findAllCalls[2].limit).toBe(1);
+    expect(findAllCalls[2].offset).toBe(1);
+    expect(paged.body.page).toBe(2);
 
     const invalidStatus = await request(app)
       .get("/api/store/orders?status=WRONG")
       .set("Authorization", `Bearer ${storeToken()}`);
-    assert.equal(invalidStatus.status, 400);
+    expect(invalidStatus.statusCode).toBe(400);
 
     const invalidPage = await request(app)
       .get("/api/store/orders?page=0")
       .set("Authorization", `Bearer ${storeToken()}`);
-    assert.equal(invalidPage.status, 400);
-    assert.match(invalidPage.body.message, /page/);
+    expect(invalidPage.statusCode).toBe(400);
+    expect(invalidPage.body.message).toMatch(/page/);
 
     const invalidLimit = await request(app)
       .get("/api/store/orders?limit=999")
       .set("Authorization", `Bearer ${storeToken()}`);
-    assert.equal(invalidLimit.status, 400);
-    assert.match(invalidLimit.body.message, /limit/);
+    expect(invalidLimit.statusCode).toBe(400);
+    expect(invalidLimit.body.message).toMatch(/limit/);
   } finally {
     Order.findAll = originalOrderFindAll;
     Order.count = originalOrderCount;
@@ -637,9 +635,9 @@ test("order detail blocks access to other stores orders", async () => {
       .get("/api/store/orders/77")
       .set("Authorization", `Bearer ${storeToken()}`);
 
-    assert.equal(response.status, 404);
-    assert.equal(findOneCalls[0].where.storeId, 1);
-    assert.equal(findOneCalls[0].where.orderId, 77);
+    expect(response.statusCode).toBe(404);
+    expect(findOneCalls[0].where.storeId).toBe(1);
+    expect(findOneCalls[0].where.orderId).toBe(77);
   } finally {
     Order.findOne = originalOrderFindOne;
   }

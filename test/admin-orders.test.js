@@ -1,5 +1,3 @@
-const assert = require("node:assert/strict");
-const test = require("node:test");
 const request = require("supertest");
 const { sequelize } = require("../config/database");
 const { StoreInventory, Order } = require("../models");
@@ -67,13 +65,13 @@ const buildOrderInstance = ({
 
 test("admin order endpoints require admin authentication", async () => {
   const unauthorized = await request(app).get("/api/admin/orders");
-  assert.equal(unauthorized.status, 401);
+  expect(unauthorized.statusCode).toBe(401);
 
   setAdminAuthMock();
   const forbidden = await request(app)
     .get("/api/admin/orders")
     .set("Authorization", `Bearer ${storeToken()}`);
-  assert.equal(forbidden.status, 403);
+  expect(forbidden.statusCode).toBe(403);
 });
 
 test("admin can list orders with filters", async () => {
@@ -91,19 +89,19 @@ test("admin can list orders with filters", async () => {
       .get("/api/admin/orders?store_id=2&status=PENDING")
       .set("Authorization", `Bearer ${adminToken()}`);
 
-    assert.equal(response.status, 200);
-    assert.equal(findAllCalls[0].where.storeId, 2);
-    assert.equal(findAllCalls[0].where.orderStatus, "PENDING");
+    expect(response.statusCode).toBe(200);
+    expect(findAllCalls[0].where.storeId).toBe(2);
+    expect(findAllCalls[0].where.orderStatus).toBe("PENDING");
 
     const invalidStore = await request(app)
       .get("/api/admin/orders?store_id=abc")
       .set("Authorization", `Bearer ${adminToken()}`);
-    assert.equal(invalidStore.status, 400);
+    expect(invalidStore.statusCode).toBe(400);
 
     const invalidStatus = await request(app)
       .get("/api/admin/orders?status=NOPE")
       .set("Authorization", `Bearer ${adminToken()}`);
-    assert.equal(invalidStatus.status, 400);
+    expect(invalidStatus.statusCode).toBe(400);
   } finally {
     Order.findAll = originalOrderFindAll;
   }
@@ -125,11 +123,11 @@ test("PENDING order can transition to ORDERED without stock change", async () =>
       .set("Authorization", `Bearer ${adminToken()}`)
       .send({ status: "ORDERED" });
 
-    assert.equal(response.status, 200);
-    assert.equal(response.body.order_status, "ORDERED");
-    assert.equal(response.body.stock_increased, false);
-    assert.equal(saveCalls.length, 1);
-    assert.ok(saveCalls[0].transaction);
+    expect(response.statusCode).toBe(200);
+    expect(response.body.order_status).toBe("ORDERED");
+    expect(response.body.stock_increased).toBe(false);
+    expect(saveCalls.length).toBe(1);
+    expect(saveCalls[0].transaction).toBeTruthy();
   } finally {
     Order.findOne = originalOrderFindOne;
     restoreTransaction();
@@ -151,8 +149,8 @@ test("ORDERED to COMPLETED increases store stock by ordered quantity", async () 
 
   const incrementCalls = [];
   StoreInventory.findOne = async (args) => {
-    assert.equal(args.where.storeId, 1);
-    assert.equal(args.where.productId, 1);
+    expect(args.where.storeId).toBe(1);
+    expect(args.where.productId).toBe(1);
     return {
       currentStock: 3,
       increment: async (field, options) => {
@@ -167,13 +165,13 @@ test("ORDERED to COMPLETED increases store stock by ordered quantity", async () 
       .set("Authorization", `Bearer ${adminToken()}`)
       .send({ status: "COMPLETED" });
 
-    assert.equal(response.status, 200);
-    assert.equal(response.body.order_status, "COMPLETED");
-    assert.equal(response.body.stock_increased, true);
-    assert.equal(saveCalls.length, 1);
-    assert.equal(incrementCalls.length, 1);
-    assert.equal(incrementCalls[0].field, "currentStock");
-    assert.equal(incrementCalls[0].options.by, 12);
+    expect(response.statusCode).toBe(200);
+    expect(response.body.order_status).toBe("COMPLETED");
+    expect(response.body.stock_increased).toBe(true);
+    expect(saveCalls.length).toBe(1);
+    expect(incrementCalls.length).toBe(1);
+    expect(incrementCalls[0].field).toBe("currentStock");
+    expect(incrementCalls[0].options.by).toBe(12);
   } finally {
     Order.findOne = originalOrderFindOne;
     StoreInventory.findOne = originalInventoryFindOne;
@@ -204,8 +202,8 @@ test("invalid status transitions are rejected", async () => {
         .set("Authorization", `Bearer ${adminToken()}`)
         .send({ status: next });
 
-      assert.equal(response.status, 409);
-      assert.equal(response.body.error, "INVALID_ORDER_STATUS");
+      expect(response.statusCode).toBe(409);
+      expect(response.body.error).toBe("INVALID_ORDER_STATUS");
     }
   } finally {
     Order.findOne = originalOrderFindOne;
@@ -225,25 +223,25 @@ test("status change validates input and order existence", async () => {
       .patch("/api/admin/orders/5/status")
       .set("Authorization", `Bearer ${adminToken()}`)
       .send({ status: "WRONG" });
-    assert.equal(badStatus.status, 400);
+    expect(badStatus.statusCode).toBe(400);
 
     const missingStatus = await request(app)
       .patch("/api/admin/orders/5/status")
       .set("Authorization", `Bearer ${adminToken()}`)
       .send({});
-    assert.equal(missingStatus.status, 400);
+    expect(missingStatus.statusCode).toBe(400);
 
     const notFound = await request(app)
       .patch("/api/admin/orders/999/status")
       .set("Authorization", `Bearer ${adminToken()}`)
       .send({ status: "ORDERED" });
-    assert.equal(notFound.status, 404);
+    expect(notFound.statusCode).toBe(404);
 
     const badOrderId = await request(app)
       .patch("/api/admin/orders/abc/status")
       .set("Authorization", `Bearer ${adminToken()}`)
       .send({ status: "ORDERED" });
-    assert.equal(badOrderId.status, 400);
+    expect(badOrderId.statusCode).toBe(400);
   } finally {
     Order.findOne = originalOrderFindOne;
     restoreTransaction();
