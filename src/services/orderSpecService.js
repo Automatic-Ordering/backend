@@ -457,24 +457,22 @@ const receiveOrderSpec = async (storeId, orderSpecId, items) => {
     const comparison = [];
     for (const item of specItems) {
       const receivedQuantity = receivedQuantityByProductId.get(item.productId);
-      if (receivedQuantity > 0) {
-        try {
-          await increaseStock({
-            storeId: spec.storeId,
-            productId: item.productId,
-            quantity: receivedQuantity,
-            transaction,
-          });
-        } catch (error) {
-          if (error.code === "NOT_FOUND") {
-            throw createHttpError(
-              409,
-              "INVENTORY_NOT_FOUND",
-              "재고 정보가 없어 입고 처리를 할 수 없습니다.",
-            );
-          }
-          throw error;
+      try {
+        await increaseStock({
+          storeId: spec.storeId,
+          productId: item.productId,
+          quantity: receivedQuantity,
+          transaction,
+        });
+      } catch (error) {
+        if (error.code === "NOT_FOUND") {
+          throw createHttpError(
+            409,
+            "INVENTORY_NOT_FOUND",
+            "재고 정보가 없어 입고 처리를 할 수 없습니다.",
+          );
         }
+        throw error;
       }
 
       item.receivedQuantity = receivedQuantity;
