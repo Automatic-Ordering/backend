@@ -17,6 +17,7 @@ const productRoutes = require("./routes/products");
 const storeProductRoutes = require("./routes/store-products");
 const storeSalesRoutes = require("./routes/store-sales");
 const storeOrderRoutes = require("./routes/store-orders");
+const storeDashboardRoutes = require("./routes/store-dashboard");
 const adminOrderRoutes = require("./routes/admin-orders");
 const storeOrderSpecRoutes = require("./routes/store-order-specs");
 const adminOrderSpecRoutes = require("./routes/admin-order-specs");
@@ -92,6 +93,7 @@ app.use("/api/store/orders/specs", storeOrderSpecRoutes);
 app.use("/api/admin/orders/specs", adminOrderSpecRoutes);
 app.use("/api/store/order-settings", storeOrderSettingsRoutes);
 app.use("/api/store/orders", storeOrderRoutes);
+app.use("/api/store/dashboard", storeDashboardRoutes);
 app.use("/api/admin/orders", adminOrderRoutes);
 
 const swaggerDefinition = {
