@@ -687,29 +687,29 @@ router.delete("/:id", async (req, res, next) => {
 
     await sequelize.transaction(async (transaction) => {
       await OrderSpecificationItem.destroy({
-        where: { storeId: store.storeId },
+        where: { store_id: store.storeId },
         transaction,
       });
       await OrderStatusHistory.destroy({
-        where: { storeId: store.storeId },
+        where: { store_id: store.storeId },
         transaction,
       });
       await OrderSpecification.destroy({
-        where: { storeId: store.storeId },
+        where: { store_id: store.storeId },
         transaction,
       });
-      await Order.destroy({ where: { storeId: store.storeId }, transaction });
-      await Sales.destroy({ where: { storeId: store.storeId }, transaction });
+      await Order.destroy({ where: { store_id: store.storeId }, transaction });
+      await Sales.destroy({ where: { store_id: store.storeId }, transaction });
       await Inventory.destroy({
-        where: { storeId: store.storeId },
+        where: { store_id: store.storeId },
         transaction,
       });
       await StoreInventory.destroy({
-        where: { storeId: store.storeId },
+        where: { store_id: store.storeId },
         transaction,
       });
       await StoreAccount.destroy({
-        where: { storeId: store.storeId },
+        where: { store_id: store.storeId },
         transaction,
       });
       await store.destroy({ transaction });
