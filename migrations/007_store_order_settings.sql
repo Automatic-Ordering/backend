@@ -9,31 +9,20 @@
 CREATE TABLE IF NOT EXISTS store_order_settings (
   setting_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   store_id BIGINT UNSIGNED NOT NULL,
-  analysis_period_days INT UNSIGNED NOT NULL DEFAULT 120,
-  moving_average_days INT UNSIGNED NOT NULL DEFAULT 7,
-  moving_average_weight DECIMAL(4, 3) NOT NULL DEFAULT 0.400,
-  same_weekday_weight DECIMAL(4, 3) NOT NULL DEFAULT 0.600,
-  service_factor DECIMAL(6, 3) NOT NULL DEFAULT 1.650,
-  forecast_period_days INT UNSIGNED NOT NULL DEFAULT 3,
+  analysis_days INT UNSIGNED NOT NULL DEFAULT 7,
+  safety_stock_days INT UNSIGNED NOT NULL DEFAULT 2,
+  lead_time_days INT UNSIGNED NOT NULL DEFAULT 1,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (setting_id),
   UNIQUE KEY uq_store_order_settings_store (store_id),
   CONSTRAINT fk_store_order_settings_store FOREIGN KEY (store_id) REFERENCES stores (store_id)
     ON UPDATE CASCADE ON DELETE CASCADE,
-  CONSTRAINT chk_store_order_settings_period_positive CHECK (
-    analysis_period_days >= 1
-    AND moving_average_days >= 1
-    AND forecast_period_days >= 1
-  ),
-  CONSTRAINT chk_store_order_settings_weight_range CHECK (
-    moving_average_weight >= 0 AND moving_average_weight <= 1
-    AND same_weekday_weight >= 0 AND same_weekday_weight <= 1
-  ),
-  CONSTRAINT chk_store_order_settings_weight_sum CHECK (
-    moving_average_weight + same_weekday_weight = 1
-  ),
-  CONSTRAINT chk_store_order_settings_service_factor CHECK (service_factor > 0)
+  CONSTRAINT chk_store_order_settings_positive CHECK (
+    analysis_days >= 1
+    AND safety_stock_days >= 0
+    AND lead_time_days >= 0
+  )
 ) ENGINE=InnoDB;
 
 -- 기존 모든 점포에 기본 설정을 생성한다 (재실행 시 중복 생성되지 않는다).

@@ -1,9 +1,5 @@
-const { predictNextDayDemand } = require("./demandForecast");
-
 const SERVICE_LEVEL_Z = 1.65;
-const SALES_WINDOW_DAYS = 120;
-// 발주량 계산에 적용되는 예측 기간. 매일 발주하는 운영 방식으로 1일로 고정한다.
-// 점포 설정의 forecast_period_days는 저장·표시용이며 계산에는 반영되지 않는다.
+const SALES_WINDOW_DAYS = 7;
 const FORECAST_PERIOD_DAYS = 1;
 
 const WARNING_CODES = {
@@ -11,280 +7,119 @@ const WARNING_CODES = {
   INSUFFICIENT_SALES_DATA: "INSUFFICIENT_SALES_DATA",
 };
 
-const pad = (value) => String(value).padStart(2, "0");
-
-const formatLocalDate = (date) =>
-  `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-
-const parseDateValue = (value) => {
-  if (value instanceof Date) {
-    return new Date(value.getTime());
-  }
-  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    const [year, month, day] = value.split("-").map(Number);
-    return new Date(year, month - 1, day);
-  }
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-};
-
-const parseLocalDateKey = (key) => {
-  const [year, month, day] = key.split("-").map(Number);
-  return new Date(year, month - 1, day);
-};
-
-const assertNonNegativeInteger = (
-  value,
-  label,
-  { allowNull = false, defaultValue } = {},
-) => {
-  if (value === undefined || value === null) {
-    if (allowNull || defaultValue !== undefined) {
-      return defaultValue ?? 0;
-    }
-    throw new Error(`${label} 값이 필요합니다.`);
-  }
+const assertNonNegativeInteger = (value, label, defaultValue) => {
+  if (value === undefined || value === null) return defaultValue ?? 0;
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed < 0) {
-    throw new Error(
-      `${label}은(는) 0 이상의 정수여야 합니다. (입력값: ${String(value)})`,
-    );
+    throw new Error(`${label}은(는) 0 이상의 정수여야 합니다.`);
   }
   return parsed;
 };
 
-const validateInputs = (input) => ({
-  currentStock: assertNonNegativeInteger(input.currentStock, "현재 재고"),
-  incomingQuantity: assertNonNegativeInteger(
-    input.incomingQuantity,
-    "입고 예정 수량",
-    {
-      allowNull: true,
-      defaultValue: 0,
-    },
-  ),
-  leadTimeDays: assertNonNegativeInteger(input.leadTimeDays, "리드타임"),
-  orderUnit: assertNonNegativeInteger(input.orderUnit, "발주 단위"),
-  configuredSafetyStock: assertNonNegativeInteger(
-    input.configuredSafetyStock,
-    "설정 안전재고",
-    { allowNull: true, defaultValue: 0 },
-  ),
-  serviceLevelZ:
-    input.serviceLevelZ === undefined || input.serviceLevelZ === null
-      ? SERVICE_LEVEL_Z
-      : (() => {
-          const z = Number(input.serviceLevelZ);
-          if (!Number.isFinite(z) || z <= 0) {
-            throw new Error(
-              `서비스 계수는 0보다 큰 숫자여야 합니다. (입력값: ${String(input.serviceLevelZ)})`,
-            );
-          }
-          return z;
-        })(),
-});
+const assertPositiveInteger = (value, label, defaultValue) => {
+  if (value === undefined || value === null) return defaultValue;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    throw new Error(`${label}은(는) 1 이상의 정수여야 합니다.`);
+  }
+  return parsed;
+};
+const assertNonNegativeSetting = (value, label, defaultValue) => {
+  if (value === undefined || value === null) return defaultValue;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    throw new Error(`${label}은(는) 0 이상의 정수여야 합니다.`);
+  }
+  return parsed;
+};
 
 const buildDailySeries = (dailySales) => {
-  if (dailySales === undefined || dailySales === null) {
-    return [];
-  }
-  if (!Array.isArray(dailySales)) {
-    throw new Error("판매 데이터는 배열이어야 합니다.");
-  }
-
-  const quantityByDate = new Map();
-  dailySales.forEach((entry, index) => {
-    if (!entry || typeof entry !== "object") {
-      throw new Error(`판매 데이터 항목은 객체여야 합니다. (index=${index})`);
-    }
-    const date = parseDateValue(entry.date);
-    if (!date) {
-      throw new Error(
-        `유효한 날짜가 아닙니다. (index=${index}, date=${String(entry.date)})`,
-      );
-    }
-    if (
-      typeof entry.quantity !== "number" ||
-      !Number.isFinite(entry.quantity) ||
-      entry.quantity < 0
-    ) {
-      throw new Error(
-        `판매량은 0 이상의 숫자여야 합니다. (index=${index}, quantity=${String(entry.quantity)})`,
-      );
-    }
-    const key = formatLocalDate(date);
-    if (quantityByDate.has(key)) {
-      throw new Error(`중복된 날짜가 있습니다. (index=${index}, date=${key})`);
-    }
-    quantityByDate.set(key, entry.quantity);
-  });
-
-  if (!quantityByDate.size) {
-    return [];
-  }
-
-  const sortedKeys = [...quantityByDate.keys()].sort();
-  const cursor = parseLocalDateKey(sortedKeys[0]);
-  const endDate = parseLocalDateKey(sortedKeys[sortedKeys.length - 1]);
-
-  const series = [];
-  while (cursor <= endDate) {
-    const key = formatLocalDate(cursor);
-    series.push({
-      key,
-      quantity: quantityByDate.get(key) ?? 0,
-    });
-    cursor.setDate(cursor.getDate() + 1);
-  }
-  return series;
+  if (!Array.isArray(dailySales)) return [];
+  return dailySales
+    .filter((entry) => entry && typeof entry.quantity === "number")
+    .map((entry) => ({
+      key: entry.date,
+      quantity: entry.quantity,
+    }));
 };
 
 const calculateDailyStats = (series) => {
-  if (!series.length) {
-    return { sampleCount: 0, mean: 0, stdDev: 0 };
-  }
-  const sampleCount = series.length;
-  const mean = series.reduce((sum, day) => sum + day.quantity, 0) / sampleCount;
-  let stdDev = 0;
-  if (sampleCount >= 2) {
-    const variance =
-      series.reduce((sum, day) => sum + (day.quantity - mean) ** 2, 0) /
-      (sampleCount - 1);
-    stdDev = Math.sqrt(variance);
-  }
-  return { sampleCount, mean, stdDev };
+  if (!series.length) return { sampleCount: 0, mean: 0, stdDev: 0 };
+  const mean = series.reduce((sum, day) => sum + day.quantity, 0) / series.length;
+  const variance =
+    series.length >= 2
+      ? series.reduce((sum, day) => sum + (day.quantity - mean) ** 2, 0) /
+        (series.length - 1)
+      : 0;
+  return { sampleCount: series.length, mean, stdDev: Math.sqrt(variance) };
 };
 
-const calculateSafetyStock = ({
-  stdDev,
-  leadTimeDays,
-  serviceLevelZ = SERVICE_LEVEL_Z,
-}) => {
-  if (!Number.isFinite(stdDev) || stdDev < 0) {
-    throw new Error("일일 판매량 표준편차는 0 이상의 숫자여야 합니다.");
-  }
-  const leadTime = assertNonNegativeInteger(leadTimeDays, "리드타임");
-  if (leadTime < 1) {
-    throw new Error("리드타임은 1일 이상이어야 합니다.");
-  }
-  if (!Number.isFinite(serviceLevelZ) || serviceLevelZ <= 0) {
-    throw new Error("서비스 계수는 0보다 큰 숫자여야 합니다.");
-  }
-  return Math.ceil(serviceLevelZ * stdDev * Math.sqrt(leadTime));
-};
+const calculateSafetyStock = ({ stdDev, leadTimeDays, serviceLevelZ }) => 0;
 
-const calculateOrderQuantity = ({
-  targetStock,
-  currentStock,
-  incomingQuantity,
-  orderUnit,
-}) => {
+const calculateOrderQuantity = ({ targetStock, currentStock, incomingQuantity, orderUnit }) => {
   const target = assertNonNegativeInteger(targetStock, "목표 재고");
   const current = assertNonNegativeInteger(currentStock, "현재 재고");
-  const incoming = assertNonNegativeInteger(
-    incomingQuantity,
-    "입고 예정 수량",
-    {
-      allowNull: true,
-      defaultValue: 0,
-    },
-  );
-  const unit = assertNonNegativeInteger(orderUnit, "발주 단위");
-  if (unit < 1) {
-    throw new Error("발주 단위는 1 이상이어야 합니다.");
-  }
-
-  const rawOrderQuantity = target - current - incoming;
-  if (rawOrderQuantity <= 0) {
-    return { rawOrderQuantity, orderQuantity: 0 };
-  }
+  const rawOrderQuantity = target - current;
   return {
     rawOrderQuantity,
-    orderQuantity: Math.ceil(rawOrderQuantity / unit) * unit,
+    orderQuantity: rawOrderQuantity > 0 ? rawOrderQuantity : 0,
   };
 };
 
-// 발주 추천 계산.
-// - 예상 판매량: 최근 7일 판매량 합계 / 7 (요일별 가중치 결합 없음)
-// - 예측 기간: 1일 고정 → 목표재고 = ceil(예상 판매량)
-// - 발주량 = max(목표재고 - 현재 재고 - 입고 예정 수량, 0), 발주 단위 배수 올림
-// - 변동성(표준편차) 기반 안전재고와 점포 설정 안전재고는 계산에서 제외되며,
-//   computed_safety_stock/configured_safety_stock은 참고용으로만 응답한다.
 const calculateRecommendation = (input = {}) => {
-  const {
-    currentStock,
-    incomingQuantity,
-    leadTimeDays,
-    orderUnit,
-    configuredSafetyStock,
-    serviceLevelZ,
-  } = validateInputs(input);
+  const currentStock = assertNonNegativeInteger(input.currentStock, "현재 재고");
+  const analysisDays = assertPositiveInteger(
+    input.analysisDays,
+    "판매 분석 기간",
+    SALES_WINDOW_DAYS,
+  );
+  const safetyStockDays = assertNonNegativeSetting(
+    input.safetyStockDays,
+    "안전재고 일수",
+    2,
+  );
+  const leadTimeDays = assertNonNegativeSetting(
+    input.leadTimeDays,
+    "리드타임",
+    1,
+  );
 
-  const dailySales = input.dailySales;
-  const series = buildDailySeries(dailySales);
+  const series = buildDailySeries(input.dailySales);
+  const recentSales = series.reduce((sum, entry) => sum + Number(entry.quantity || 0), 0);
   const dataWarning = [];
+  if (!series.length) dataWarning.push(WARNING_CODES.NO_SALES_DATA);
+  else if (series.length < 2) dataWarning.push(WARNING_CODES.INSUFFICIENT_SALES_DATA);
 
-  let prediction;
-  if (!series.length) {
-    prediction = {
-      predictedDemand: 0,
-      movingAverage: 0,
-      dataWarning: [],
-    };
-    dataWarning.push(WARNING_CODES.NO_SALES_DATA);
-  } else {
-    prediction = predictNextDayDemand(dailySales);
-  }
-
-  const stats = calculateDailyStats(series);
-  if (series.length > 0 && series.length < 2) {
-    dataWarning.push(WARNING_CODES.INSUFFICIENT_SALES_DATA);
-  }
-
-  // 참고용 안전재고 계산. 발주량에는 반영되지 않는다.
-  const computedSafetyStock = calculateSafetyStock({
-    stdDev: stats.stdDev,
-    leadTimeDays,
-    serviceLevelZ,
-  });
-  const appliedSafetyStock = 0;
-  const safetyStockSource = "NOT_APPLIED";
-
-  // 예측 기간은 1일로 고정한다.
-  const coverageDays = FORECAST_PERIOD_DAYS;
-
-  const targetStock = Math.ceil(prediction.predictedDemand * coverageDays);
-  const { rawOrderQuantity, orderQuantity } = calculateOrderQuantity({
-    targetStock,
-    currentStock,
-    incomingQuantity,
-    orderUnit,
-  });
+  const predictedDemand =
+    series.length ? recentSales / analysisDays : 0;
+  const targetStock = Math.ceil(
+    predictedDemand * (leadTimeDays + safetyStockDays),
+  );
+  const rawOrderQuantity = Math.max(0, targetStock - currentStock);
 
   return {
-    predictedDemand: prediction.predictedDemand,
-    movingAverage: prediction.movingAverage,
+    predictedDemand,
+    movingAverage: predictedDemand,
     sameWeekdayAverage: null,
-    dailyMean: stats.mean,
-    dailyStdDev: stats.stdDev,
+    dailyMean: series.length ? recentSales / series.length : 0,
+    dailyStdDev: calculateDailyStats(series).stdDev,
     salesSeriesDays: series.length,
-    serviceLevelZ,
+    serviceLevelZ: SERVICE_LEVEL_Z,
     leadTimeDays,
     forecastPeriodDays: FORECAST_PERIOD_DAYS,
-    coverageDays,
-    orderUnit,
-    computedSafetyStock,
-    configuredSafetyStock:
-      configuredSafetyStock > 0 ? configuredSafetyStock : null,
-    appliedSafetyStock,
-    safetyStockSource,
+    coverageDays: leadTimeDays + safetyStockDays,
+    orderUnit: 1,
+    computedSafetyStock: 0,
+    configuredSafetyStock: null,
+    appliedSafetyStock: safetyStockDays,
+    safetyStockSource: "CONFIGURED",
     targetStock,
     currentStock,
-    incomingQuantity,
+    incomingQuantity: 0,
     rawOrderQuantity,
-    orderQuantity,
-    needsOrder: orderQuantity > 0,
-    dataWarning: [...dataWarning, ...prediction.dataWarning],
+    orderQuantity: rawOrderQuantity,
+    needsOrder: rawOrderQuantity > 0,
+    dataWarning,
   };
 };
 

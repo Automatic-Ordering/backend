@@ -13,7 +13,6 @@ const {
   SALES_WINDOW_DAYS,
   FORECAST_PERIOD_DAYS,
 } = require("./orderCalculator");
-const { MOVING_AVERAGE_WINDOW } = require("./demandForecast");
 const { increaseStock } = require("./inventoryService");
 const { createHttpError } = require("../utils/httpError");
 const { validateConfirmItems } = require("../utils/orderValidation");
@@ -34,13 +33,11 @@ const pad = (value) => String(value).padStart(2, "0");
 const formatLocalDate = (date) =>
   `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 
-// 판매 분석 기간은 점포 설정(analysis_period_days)으로 대체 가능하다.
-// 설정이 없으면 기존 상수(SALES_WINDOW_DAYS = 120)를 사용한다.
-const getSalesWindow = (analysisPeriodDays = SALES_WINDOW_DAYS) => {
+const getSalesWindow = (analysisDays = SALES_WINDOW_DAYS) => {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const windowStart = new Date(today);
-  windowStart.setDate(today.getDate() - analysisPeriodDays);
+  windowStart.setDate(today.getDate() - analysisDays);
   const windowEnd = new Date(today);
   windowEnd.setDate(today.getDate() - 1);
   windowEnd.setHours(23, 59, 59, 999);
@@ -152,12 +149,10 @@ const getRegisteredInventories = async (storeId, { productId } = {}) => {
   return inventories.filter((inventory) => inventory.product);
 };
 
-// 점포 설정을 계산 입력으로 변환한다.
-// analysis_period_days는 판매 조회 기간에, service_factor는 참고용 안전재고 계산에
-// 사용된다. moving_average_days/가중치/forecast_period_days는 발주 계산에
-// 반영되지 않는다(7일 이동평균·예측 기간 1일 고정).
 const buildCalculationOptions = (settings) => ({
-  serviceLevelZ: Number(settings.serviceFactor),
+  analysisDays: Number(settings.analysisDays ?? settings.analysisPeriodDays ?? 7),
+  safetyStockDays: Number(settings.safetyStockDays ?? 2),
+  leadTimeDays: Number(settings.leadTimeDays ?? 1),
 });
 
 const getOrderRecommendations = async (
@@ -166,7 +161,9 @@ const getOrderRecommendations = async (
 ) => {
   const settings = await getStoreOrderSettings(storeId);
   const calculationOptions = buildCalculationOptions(settings);
-  const { windowStart, windowEnd } = getSalesWindow(settings.analysisPeriodDays);
+  const { windowStart, windowEnd } = getSalesWindow(
+    settings.analysisDays ?? settings.analysisPeriodDays ?? SALES_WINDOW_DAYS,
+  );
   const productWhere = search
     ? {
         [Op.or]: [
@@ -266,7 +263,9 @@ const getRecommendationDetail = async (storeId, productId) => {
   const product = inventory.product;
   const settings = await getStoreOrderSettings(storeId);
   const calculationOptions = buildCalculationOptions(settings);
-  const { windowStart, windowEnd } = getSalesWindow(settings.analysisPeriodDays);
+  const { windowStart, windowEnd } = getSalesWindow(
+    settings.analysisDays ?? settings.analysisPeriodDays ?? SALES_WINDOW_DAYS,
+  );
 
   const salesRows = await Sales.findAll({
     where: {
@@ -303,12 +302,11 @@ const getRecommendationDetail = async (storeId, productId) => {
       incomingQuantity,
     ),
     calculation_basis: {
-      sales_window_days: settings.analysisPeriodDays,
+      sales_window_days: settings.analysisDays ?? settings.analysisPeriodDays ?? SALES_WINDOW_DAYS,
       sales_series_days: series.length,
-      moving_average_sample_days: Math.min(
-        MOVING_AVERAGE_WINDOW,
-        series.length,
-      ),
+      analysis_days: settings.analysisDays ?? settings.analysisPeriodDays ?? SALES_WINDOW_DAYS,
+      safety_stock_days: settings.safetyStockDays ?? 2,
+      lead_time_days: settings.leadTimeDays ?? 1,
       forecast_period_days: FORECAST_PERIOD_DAYS,
       forecast_coverage_days: recommendation.coverageDays,
       same_weekday_sample_count: 0,

@@ -26,7 +26,7 @@ const handleServiceError = (res, next, error) => {
  *     tags:
  *       - Store Order Settings
  *     summary: 점포 자동 발주 기준 설정 조회
- *     description: 현재 로그인된 점포의 자동 발주 계산 기준 설정을 조회합니다. 설정 행이 없으면 기본값(120일, 7일, 0.4, 0.6, 1.65, 3일)으로 생성해 반환합니다. 실제 발주 계산은 7일 이동평균·예측 기간 1일 고정만 사용하며, 가중치·예측 기간·서비스 계수 설정값은 참고용으로 저장됩니다.
+ *     description: 현재 로그인된 점포의 자동 발주 계산 기준을 조회합니다. 기본값은 analysis_days=7, safety_stock_days=2, lead_time_days=1입니다.
  *     security:
  *       - bearerAuth: []
  *     responses:
@@ -52,9 +52,8 @@ router.get("/", async (req, res, next) => {
  *     summary: 점포 자동 발주 기준 설정 수정
  *     description: |
  *       현재 로그인된 점포의 자동 발주 계산 기준 설정을 수정합니다.
- *       - 분석 기간·이동평균 기간·예측 기간은 1 이상의 정수
- *       - 두 가중치는 각각 0 이상 1 이하이고 합이 1
- *       - 서비스 계수는 0보다 큰 숫자
+ *       - analysis_days는 1 이상의 정수
+ *       - safety_stock_days·lead_time_days는 0 이상의 정수
  *       - 위 규칙 외의 필드(예: store_id)는 허용되지 않습니다.
  *       점포 ID는 항상 인증 토큰에서 가져오므로 다른 점포의 설정은 수정할 수 없습니다.
  *     security:
@@ -66,12 +65,9 @@ router.get("/", async (req, res, next) => {
  *           schema:
  *             type: object
  *             properties:
- *               analysis_period_days: { type: integer, minimum: 1, example: 90 }
- *               moving_average_days: { type: integer, minimum: 1, example: 7 }
- *               moving_average_weight: { type: number, minimum: 0, maximum: 1, example: 0.4 }
- *               same_weekday_weight: { type: number, minimum: 0, maximum: 1, example: 0.6 }
- *               service_factor: { type: number, exclusiveMinimum: 0, example: 1.65 }
- *               forecast_period_days: { type: integer, minimum: 1, example: 3 }
+ *               analysis_days: { type: integer, minimum: 1, example: 7 }
+ *               safety_stock_days: { type: integer, minimum: 0, example: 2 }
+ *               lead_time_days: { type: integer, minimum: 0, example: 1 }
  *     responses:
  *       '200': { description: 수정된 자동 발주 기준 설정 }
  *       '400': { description: 입력값이 올바르지 않습니다. }

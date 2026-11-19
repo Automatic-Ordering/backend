@@ -17,41 +17,23 @@ StoreOrderSetting.init(
       unique: true,
       field: "store_id",
     },
-    analysisPeriodDays: {
-      type: DataTypes.INTEGER.UNSIGNED,
-      allowNull: false,
-      defaultValue: 120,
-      field: "analysis_period_days",
-    },
-    movingAverageDays: {
+    analysisDays: {
       type: DataTypes.INTEGER.UNSIGNED,
       allowNull: false,
       defaultValue: 7,
-      field: "moving_average_days",
+      field: "analysis_days",
     },
-    movingAverageWeight: {
-      type: DataTypes.DECIMAL(4, 3),
-      allowNull: false,
-      defaultValue: "0.400",
-      field: "moving_average_weight",
-    },
-    sameWeekdayWeight: {
-      type: DataTypes.DECIMAL(4, 3),
-      allowNull: false,
-      defaultValue: "0.600",
-      field: "same_weekday_weight",
-    },
-    serviceFactor: {
-      type: DataTypes.DECIMAL(6, 3),
-      allowNull: false,
-      defaultValue: "1.650",
-      field: "service_factor",
-    },
-    forecastPeriodDays: {
+    safetyStockDays: {
       type: DataTypes.INTEGER.UNSIGNED,
       allowNull: false,
-      defaultValue: 3,
-      field: "forecast_period_days",
+      defaultValue: 2,
+      field: "safety_stock_days",
+    },
+    leadTimeDays: {
+      type: DataTypes.INTEGER.UNSIGNED,
+      allowNull: false,
+      defaultValue: 1,
+      field: "lead_time_days",
     },
   },
   {
