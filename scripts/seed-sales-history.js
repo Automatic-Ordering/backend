@@ -4,7 +4,7 @@ const { Op } = require("sequelize");
 const { sequelize } = require("../config/database");
 const { Sales, Store, StoreInventory, Product } = require("../models");
 
-const DAYS = 120;
+const DAYS = 23;
 const DEFAULT_SEED = 20261113;
 const CHUNK_SIZE = 500;
 
