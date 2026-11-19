@@ -14,6 +14,7 @@ const {
   OrderSpecification,
   OrderSpecificationItem,
   OrderStatusHistory,
+  StoreOrderSetting,
 } = require("../../models");
 const {
   hashPassword,
@@ -686,32 +687,63 @@ router.delete("/:id", async (req, res, next) => {
     }
 
     await sequelize.transaction(async (transaction) => {
-      await OrderSpecificationItem.destroy({
+      // 1) 먼저 order_specifications 에서 해당 pointId의 order_spec_id 목록 조회
+      const orderSpecRows = await OrderSpecification.findAll({
+        attributes: ["order_spec_id"],
         where: { store_id: store.storeId },
         transaction,
       });
-      await OrderStatusHistory.destroy({
-        where: { store_id: store.storeId },
-        transaction,
-      });
+      const orderSpecIds = orderSpecRows.map((row) => row.order_spec_id);
+
+      // 2) order_spec_id 가 있으면 손자 테이블 삭제 (order_spec_id 로 연결)
+      if (orderSpecIds.length > 0) {
+        await OrderStatusHistory.destroy({
+          where: { order_spec_id: orderSpecIds },
+          transaction,
+        });
+        await OrderSpecificationItem.destroy({
+          where: { order_spec_id: orderSpecIds },
+          transaction,
+        });
+      }
+
+      // 3) order_specifications 삭제 (WHERE store_id = :storeId)
       await OrderSpecification.destroy({
         where: { store_id: store.storeId },
         transaction,
       });
+
+      // 4) orders 삭제 (WHERE store_id = :storeId)
       await Order.destroy({ where: { store_id: store.storeId }, transaction });
+
+      // 5) sales 삭제 (WHERE store_id = :storeId)
       await Sales.destroy({ where: { store_id: store.storeId }, transaction });
-      await Inventory.destroy({
-        where: { store_id: store.storeId },
-        transaction,
-      });
+
+      // 6) store_inventories 삭제 (WHERE store_id = :storeId)
       await StoreInventory.destroy({
         where: { store_id: store.storeId },
         transaction,
       });
+
+      // 7) inventories 삭제 (WHERE store_id = :storeId)
+      await Inventory.destroy({
+        where: { store_id: store.storeId },
+        transaction,
+      });
+
+      // 8) store_order_settings 삭제 (WHERE store_id = :storeId)
+      await StoreOrderSetting.destroy({
+        where: { store_id: store.storeId },
+        transaction,
+      });
+
+      // 9) store_accounts 삭제 (WHERE store_id = :storeId)
       await StoreAccount.destroy({
         where: { store_id: store.storeId },
         transaction,
       });
+
+      // 10) stores 삭제 (WHERE store_id = :storeId)
       await store.destroy({ transaction });
     });
 
