@@ -11,6 +11,9 @@ const {
   Inventory,
   Sales,
   Order,
+  OrderSpecification,
+  OrderSpecificationItem,
+  OrderStatusHistory,
 } = require("../../models");
 const {
   hashPassword,
