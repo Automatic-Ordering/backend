@@ -367,9 +367,9 @@ test("creates DRAFT specification from auto order recommendations", async () => 
     expect(response.body.order_status).toBe("DRAFT");
     expect(response.body.items.length).toBe(1);
     expect(response.body.items[0].product_id).toBe(1);
-    expect(response.body.items[0].order_quantity).toBe(5);
-    expect(response.body.items[0].amount).toBe(7500);
-    expect(response.body.total_amount).toBe(7500);
+    expect(response.body.items[0].order_quantity).toBe(25);
+    expect(response.body.items[0].amount).toBe(37500);
+    expect(response.body.total_amount).toBe(37500);
 
     const restoreInventoryCount2 = overrideMethod(
       StoreInventory,

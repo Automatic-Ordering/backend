@@ -108,12 +108,16 @@ const serializeRecommendation = (
   inventory,
   recommendation,
   incomingQuantity,
+  recentSalesQuantity,
 ) => ({
   product_id: product.productId,
   product_name: product.productName,
   category: product.category,
   price: Number(product.price),
+  safety_stock: Number(inventory.safetyStock),
   current_stock: recommendation.currentStock,
+  recent_sales_quantity: recentSalesQuantity,
+  recent_7d_sales: recentSalesQuantity,
   incoming_quantity: incomingQuantity,
   predicted_demand: recommendation.predictedDemand,
   moving_average: recommendation.movingAverage,
@@ -132,6 +136,8 @@ const serializeRecommendation = (
   target_stock: recommendation.targetStock,
   raw_order_quantity: recommendation.rawOrderQuantity,
   order_quantity: recommendation.orderQuantity,
+  recommended_qty: recommendation.orderQuantity,
+  recommended_quantity: recommendation.orderQuantity,
   needs_order: recommendation.needsOrder,
   data_warning: recommendation.dataWarning,
 });
@@ -149,21 +155,12 @@ const getRegisteredInventories = async (storeId, { productId } = {}) => {
   return inventories.filter((inventory) => inventory.product);
 };
 
-const buildCalculationOptions = (settings) => ({
-  analysisDays: Number(settings.analysisDays ?? settings.analysisPeriodDays ?? 7),
-  safetyStockDays: Number(settings.safetyStockDays ?? 2),
-  leadTimeDays: Number(settings.leadTimeDays ?? 1),
-});
-
 const getOrderRecommendations = async (
   storeId,
   { page = 1, limit = 20, search } = {},
 ) => {
-  const settings = await getStoreOrderSettings(storeId);
-  const calculationOptions = buildCalculationOptions(settings);
-  const { windowStart, windowEnd } = getSalesWindow(
-    settings.analysisDays ?? settings.analysisPeriodDays ?? SALES_WINDOW_DAYS,
-  );
+  const { windowStart, windowEnd } = getSalesWindow(SALES_WINDOW_DAYS);
+  const { windowStart: recentWindowStart } = getSalesWindow(SALES_WINDOW_DAYS);
   const productWhere = search
     ? {
         [Op.or]: [
@@ -227,9 +224,11 @@ const getOrderRecommendations = async (
 
   const recommendations = inventories.map((inventory) => {
     const product = inventory.product;
-    const dailySales = aggregateDailySales(
-      salesByProduct.get(inventory.productId) ?? [],
-    );
+    const productSales = salesByProduct.get(inventory.productId) ?? [];
+    const dailySales = aggregateDailySales(productSales);
+    const recentSalesQuantity = productSales
+      .filter((sale) => new Date(sale.salesDate) >= recentWindowStart)
+      .reduce((sum, sale) => sum + Number(sale.salesQuantity || 0), 0);
     const recommendation = calculateRecommendation({
       dailySales,
       currentStock: inventory.currentStock,
@@ -237,13 +236,13 @@ const getOrderRecommendations = async (
       leadTimeDays: product.leadTimeDays,
       orderUnit: product.orderUnit,
       configuredSafetyStock: inventory.safetyStock,
-      ...calculationOptions,
     });
     return serializeRecommendation(
       product,
       inventory,
       recommendation,
       incomingByProduct.get(inventory.productId) ?? 0,
+      recentSalesQuantity,
     );
   });
 
@@ -262,10 +261,8 @@ const getRecommendationDetail = async (storeId, productId) => {
 
   const product = inventory.product;
   const settings = await getStoreOrderSettings(storeId);
-  const calculationOptions = buildCalculationOptions(settings);
-  const { windowStart, windowEnd } = getSalesWindow(
-    settings.analysisDays ?? settings.analysisPeriodDays ?? SALES_WINDOW_DAYS,
-  );
+  const { windowStart, windowEnd } = getSalesWindow(SALES_WINDOW_DAYS);
+  const { windowStart: recentWindowStart } = getSalesWindow(SALES_WINDOW_DAYS);
 
   const salesRows = await Sales.findAll({
     where: {
@@ -278,6 +275,9 @@ const getRecommendationDetail = async (storeId, productId) => {
   });
 
   const dailySales = aggregateDailySales(salesRows);
+  const recentSalesQuantity = salesRows
+    .filter((sale) => new Date(sale.salesDate) >= recentWindowStart)
+    .reduce((sum, sale) => sum + Number(sale.salesQuantity || 0), 0);
   const series = buildDailySeries(dailySales);
 
   const incomingByProduct = await fetchIncomingQuantities(storeId, {
@@ -292,7 +292,6 @@ const getRecommendationDetail = async (storeId, productId) => {
     leadTimeDays: product.leadTimeDays,
     orderUnit: product.orderUnit,
     configuredSafetyStock: inventory.safetyStock,
-    ...calculationOptions,
   });
   return {
     ...serializeRecommendation(
@@ -300,13 +299,14 @@ const getRecommendationDetail = async (storeId, productId) => {
       inventory,
       recommendation,
       incomingQuantity,
+      recentSalesQuantity,
     ),
     calculation_basis: {
-      sales_window_days: settings.analysisDays ?? settings.analysisPeriodDays ?? SALES_WINDOW_DAYS,
+      sales_window_days: SALES_WINDOW_DAYS,
       sales_series_days: series.length,
-      analysis_days: settings.analysisDays ?? settings.analysisPeriodDays ?? SALES_WINDOW_DAYS,
-      safety_stock_days: settings.safetyStockDays ?? 2,
-      lead_time_days: settings.leadTimeDays ?? 1,
+      analysis_days: SALES_WINDOW_DAYS,
+      safety_stock_days: null,
+      lead_time_days: null,
       forecast_period_days: FORECAST_PERIOD_DAYS,
       forecast_coverage_days: recommendation.coverageDays,
       same_weekday_sample_count: 0,

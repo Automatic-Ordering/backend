@@ -1,5 +1,6 @@
 const express = require("express");
 const { sequelize } = require("../../config/database");
+const { StoreInventory, Product } = require("../../models");
 const { authenticate, requireRole } = require("../middleware/auth");
 const {
   parsePaginationParams,
@@ -9,6 +10,42 @@ const {
 const router = express.Router();
 
 router.use(authenticate, requireRole("STORE"));
+
+router.patch("/:productId/safety_stock", async (req, res, next) => {
+  const productId = Number(req.params.productId);
+  const safetyStock = req.body?.safety_stock;
+
+  if (!Number.isInteger(productId) || productId < 1) {
+    return res.status(400).json({
+      error: "INVALID_INPUT",
+      message: "productId는 1 이상의 정수여야 합니다.",
+    });
+  }
+  if (!Number.isInteger(safetyStock) || safetyStock < 0) {
+    return res.status(400).json({
+      error: "INVALID_INPUT",
+      message: "safety_stock는 0 이상의 정수여야 합니다.",
+    });
+  }
+
+  try {
+    const inventory = await StoreInventory.findOne({
+      where: { storeId: req.user.storeId, productId },
+      include: [{ model: Product, as: "product" }],
+    });
+    if (!inventory) {
+      return res.status(404).json({
+        error: "NOT_FOUND",
+        message: "해당 점포의 상품 재고가 등록되어 있지 않습니다.",
+      });
+    }
+
+    await inventory.update({ safetyStock });
+    return res.json({ safety_stock: safetyStock });
+  } catch (error) {
+    return next(error);
+  }
+});
 
 const serializeStoreProductRow = (row) => ({
   product_id: row.product_id,

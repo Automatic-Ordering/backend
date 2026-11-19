@@ -38,7 +38,7 @@ const getConfirmInputError = (body) => {
  *     tags:
  *       - Store Orders
  *     summary: 자동 발주 추천 목록 조회
- *     description: 로그인된 점포에 등록된 상품별로 최근 7일 판매량 합계/7(7일 이동평균)을 예상 판매량으로 사용해 추천 발주량을 계산합니다. 예측 기간은 1일로 고정되고, 발주량 = max(예상 판매량 - 현재 재고 - 입고 예정 수량, 0)을 발주 단위 배수로 올림합니다. 요일별 이동평균·변동성 기반 안전재고·점포 설정 안전재고는 발주 계산에서 제외됩니다(applied_safety_stock은 항상 0, computed/configured_safety_stock은 참고용). 판매 분석 기간은 점포 설정(기본 120일)을 따릅니다. page/limit으로 페이지네이션되며, search로 상품명·카테고리를 필터링합니다. 판매 데이터 부족 시 data_warning에 경고 코드를 포함합니다.
+ *     description: 로그인된 점포에 등록된 상품별로 최근 7일 판매량 합계와 DB의 상품별 안전 재고를 사용해 권장 발주량을 계산합니다. 목표 재고 = 최근 7일 판매량 + 안전 재고이며, 권장 발주량 = max(0, 목표 재고 - 현재 재고)입니다. page/limit으로 페이지네이션되며, search로 상품명·카테고리를 필터링합니다. 판매 데이터 부족 시 data_warning에 경고 코드를 포함합니다.
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -73,7 +73,10 @@ const getConfirmInputError = (body) => {
  *                       product_id: { type: integer, example: 1 }
  *                       product_name: { type: string, example: 참치마요 삼각김밥 }
  *                       category: { type: string, example: '삼각김밥 / 샌드위치' }
+ *                       safety_stock: { type: integer, description: 점포 상품에 설정된 안전 재고, example: 8 }
  *                       current_stock: { type: integer, example: 3 }
+ *                       recent_sales_quantity: { type: integer, description: 최근 7일 판매량 합계, example: 28 }
+ *                       recent_7d_sales: { type: integer, description: 최근 7일 판매량 합계, example: 28 }
  *                       incoming_quantity: { type: integer, description: 입고 예정 수량 (legacy orders PENDING/ORDERED + 발주 명세서 REQUESTED/APPROVED 합계), example: 0 }
  *                       predicted_demand: { type: number, description: 다음 날 예상 판매량 (최근 7일 판매량 합계 / 7), example: 4 }
  *                       moving_average: { type: number, description: 7일 이동평균, example: 4 }
@@ -84,14 +87,15 @@ const getConfirmInputError = (body) => {
  *                       lead_time_days: { type: integer, description: 상품 리드타임 (발주 계산 미반영, 참고용), example: 2 }
  *                       forecast_period_days: { type: integer, description: 예측 기간 (1일 고정), example: 1 }
  *                       forecast_coverage_days: { type: integer, description: 목표재고 커버리지 일수 (예측 기간과 동일, 1일 고정), example: 1 }
- *                       order_unit: { type: integer, example: 5 }
- *                       computed_safety_stock: { type: integer, description: 자동 계산 안전재고 (참고용, 발주 계산 미반영), example: 0 }
- *                       configured_safety_stock: { type: integer, nullable: true, description: 점포 설정 안전재고 (0이면 null, 발주 계산 미반영), example: null }
- *                       applied_safety_stock: { type: integer, description: 발주 계산에 반영된 안전재고 (항상 0), example: 0 }
- *                       safety_stock_source: { type: string, enum: [NOT_APPLIED], example: NOT_APPLIED }
- *                       target_stock: { type: integer, description: 목표재고 = ceil(예상 판매량 × 예측 기간 1일), example: 4 }
+ *                       order_unit: { type: integer, example: 1 }
+ *                       computed_safety_stock: { type: integer, description: 레거시 참고 필드, example: 0 }
+ *                       configured_safety_stock: { type: integer, description: DB에 설정된 안전 재고, example: 8 }
+ *                       applied_safety_stock: { type: integer, description: 발주 계산에 반영된 안전 재고, example: 8 }
+ *                       safety_stock_source: { type: string, enum: [INVENTORY], example: INVENTORY }
+ *                       target_stock: { type: integer, description: 목표재고 = 최근 7일 판매량 + 안전 재고, example: 36 }
  *                       raw_order_quantity: { type: integer, example: 11 }
- *                       order_quantity: { type: integer, description: 추천 발주량 (발주 단위 배수 올림), example: 15 }
+ *                       order_quantity: { type: integer, description: 추천 발주량, example: 31 }
+ *                       recommended_qty: { type: integer, description: 권장 발주 수량, example: 31 }
  *                       needs_order: { type: boolean, example: true }
  *                       data_warning: { type: array, items: { type: string }, example: [] }
  *                 total: { type: integer, description: 검색 조건의 전체 상품 수, example: 100 }

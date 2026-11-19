@@ -61,6 +61,7 @@ CREATE TABLE IF NOT EXISTS order_status_histories (
   changed_by_admin_id BIGINT UNSIGNED NULL,
   note VARCHAR(500) NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (history_id),
   KEY idx_order_status_histories_spec (order_spec_id),
   CONSTRAINT fk_order_status_histories_spec FOREIGN KEY (order_spec_id) REFERENCES order_specifications (order_spec_id)

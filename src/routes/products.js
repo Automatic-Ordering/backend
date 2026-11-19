@@ -166,6 +166,92 @@ router.patch(
   },
 );
 
+/**
+ * @openapi
+ * /api/store/products/:productId/safety_stock:
+ *   patch:
+ *     tags:
+ *       - Store Products
+ *     summary: 상품 안전 재고 수량 수정
+ *     description: 점포 전용 - 상품의 안전 재고 수량을 개수 단위로 수정합니다. StoreInventory 테이블의 safety_stock 필드를 업데이트합니다.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: productId
+ *         required: true
+ *         schema: { type: integer, minimum: 1, example: 1 }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [safety_stock]
+ *             properties:
+ *               safety_stock: { type: integer, minimum: 0, example: 50 }
+ *     responses:
+ *       '200':
+ *         description: 안전 재고가 성공적으로 수정되었습니다.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 safety_stock: { type: integer, example: 50 }
+ *       '400':
+ *         description: 입력값이 올바르지 않습니다.
+ *       '404':
+ *         description: 상품을 찾을 수 없습니다.
+ *       '401':
+ *         description: 점포 인증이 필요합니다.
+ *       '403':
+ *         description: 점포 권한이 필요합니다.
+ */
+router.patch(
+  "/:productId/safety_stock",
+  authenticate,
+  requireRole("STORE"),
+  async (req, res, next) => {
+    const { productId } = req.params;
+    const { safety_stock } = req.body;
+
+    if (safety_stock === undefined || safety_stock === null) {
+      return res
+        .status(400)
+        .json({ error: "INVALID_INPUT", message: "safety_stock는 필수 입력값입니다." });
+    }
+
+    if (!Number.isInteger(safety_stock) || safety_stock < 0) {
+      return res.status(400).json({
+        error: "INVALID_INPUT",
+        message: "safety_stock는 0 이상의 정수여야 합니다.",
+      });
+    }
+
+    try {
+      const inventory = await StoreInventory.findOne({
+        where: { storeId: req.user.storeId, productId },
+        include: [{ model: Product, as: "product" }],
+      });
+
+      if (!inventory) {
+        return res.status(404).json({
+          error: "NOT_FOUND",
+          message: "해당 점포의 상품 재고가 등록되어 있지 않습니다.",
+        });
+      }
+
+      await inventory.update({ safetyStock: safety_stock });
+      return res.json({ safety_stock: safety_stock });
+    } catch (error) {
+      return next(error);
+    }
+  },
+);
+
+module.exports = router;
+
 // DELETE: 상품 삭제 (ADMIN 전용)
 router.delete(
   "/:productId",

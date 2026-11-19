@@ -68,15 +68,9 @@ const calculateOrderQuantity = ({ targetStock, currentStock, incomingQuantity, o
 
 const calculateRecommendation = (input = {}) => {
   const currentStock = assertNonNegativeInteger(input.currentStock, "현재 재고");
-  const analysisDays = assertPositiveInteger(
-    input.analysisDays,
-    "판매 분석 기간",
-    SALES_WINDOW_DAYS,
-  );
-  const safetyStockDays = assertNonNegativeSetting(
-    input.safetyStockDays,
-    "안전재고 일수",
-    2,
+  const safetyStock = assertNonNegativeInteger(
+    input.configuredSafetyStock ?? input.safetyStock,
+    "안전 재고",
   );
   const leadTimeDays = assertNonNegativeSetting(
     input.leadTimeDays,
@@ -90,29 +84,25 @@ const calculateRecommendation = (input = {}) => {
   if (!series.length) dataWarning.push(WARNING_CODES.NO_SALES_DATA);
   else if (series.length < 2) dataWarning.push(WARNING_CODES.INSUFFICIENT_SALES_DATA);
 
-  const predictedDemand =
-    series.length ? recentSales / analysisDays : 0;
-  const targetStock = Math.ceil(
-    predictedDemand * (leadTimeDays + safetyStockDays),
-  );
+  const targetStock = recentSales + safetyStock;
   const rawOrderQuantity = Math.max(0, targetStock - currentStock);
 
   return {
-    predictedDemand,
-    movingAverage: predictedDemand,
+    predictedDemand: recentSales,
+    movingAverage: recentSales / SALES_WINDOW_DAYS,
     sameWeekdayAverage: null,
-    dailyMean: series.length ? recentSales / series.length : 0,
+    dailyMean: recentSales / SALES_WINDOW_DAYS,
     dailyStdDev: calculateDailyStats(series).stdDev,
     salesSeriesDays: series.length,
     serviceLevelZ: SERVICE_LEVEL_Z,
     leadTimeDays,
     forecastPeriodDays: FORECAST_PERIOD_DAYS,
-    coverageDays: leadTimeDays + safetyStockDays,
+    coverageDays: 1,
     orderUnit: 1,
     computedSafetyStock: 0,
-    configuredSafetyStock: null,
-    appliedSafetyStock: safetyStockDays,
-    safetyStockSource: "CONFIGURED",
+    configuredSafetyStock: safetyStock,
+    appliedSafetyStock: safetyStock,
+    safetyStockSource: "INVENTORY",
     targetStock,
     currentStock,
     incomingQuantity: 0,

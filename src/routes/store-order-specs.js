@@ -32,13 +32,36 @@ const handleServiceError = (res, next, error) => {
   return next(error);
 };
 
-const getItemsInputError = (body, required) => {
+const getItemsInputError = (body, required, quantityField = "quantity") => {
   const items = body?.items;
   if (required && items === undefined) {
     return "items는 1개 이상의 발주 항목 배열이어야 합니다.";
   }
   if (items !== undefined && items !== null && !Array.isArray(items)) {
     return "items는 배열이어야 합니다.";
+  }
+  if (Array.isArray(items)) {
+    if (items.length === 0) {
+      return "items는 1개 이상의 발주 항목 배열이어야 합니다.";
+    }
+    for (let index = 0; index < items.length; index += 1) {
+      const item = items[index];
+      const productId = Number(item?.product_id);
+      const quantity = Number(item?.[quantityField]);
+      if (!Number.isInteger(productId) || productId < 1) {
+        return `items[${index}].product_id는 1 이상의 정수여야 합니다.`;
+      }
+      const minQuantity = quantityField === "received_quantity" ? 0 : 1;
+      if (!Number.isInteger(quantity) || quantity < minQuantity) {
+        return `items[${index}].${quantityField}는 ${minQuantity === 0 ? "0 이상의 정수" : "1 이상의 정수"}여야 합니다.`;
+      }
+      if (
+        quantityField === "quantity" &&
+        Object.prototype.hasOwnProperty.call(item, "order_quantity")
+      ) {
+        return "발주 수량 필드는 quantity를 사용해야 합니다.";
+      }
+    }
   }
   return null;
 };
@@ -81,6 +104,12 @@ const getItemsInputError = (body, required) => {
  *       '403': { description: 점포 권한이 필요합니다. }
  */
 router.post("/", async (req, res, next) => {
+  if (!req.body || typeof req.body !== "object" || Array.isArray(req.body)) {
+    return res.status(400).json({
+      error: "INVALID_INPUT",
+      message: "Request Body는 { items: [...] } 구조여야 합니다.",
+    });
+  }
   const inputError = getItemsInputError(req.body, false);
   if (inputError) {
     return res.status(400).json({ error: "INVALID_INPUT", message: inputError });
@@ -92,6 +121,13 @@ router.post("/", async (req, res, next) => {
     });
     return res.status(201).json(spec);
   } catch (error) {
+    if (!error.statusCode) {
+      console.error("[POST /api/store/orders/specs] 명세서 생성 실패", {
+        storeId: req.user.storeId,
+        body: req.body,
+        error: error?.stack || error,
+      });
+    }
     return handleServiceError(res, next, error);
   }
 });
@@ -308,7 +344,7 @@ router.patch("/:specId/items", async (req, res, next) => {
     });
   }
 
-  const inputError = getItemsInputError(req.body, true);
+  const inputError = getItemsInputError(req.body, true, "quantity");
   if (inputError) {
     return res.status(400).json({ error: "INVALID_INPUT", message: inputError });
   }
@@ -496,7 +532,7 @@ router.post("/:specId/receipt", async (req, res, next) => {
     });
   }
 
-  const inputError = getItemsInputError(req.body, true);
+  const inputError = getItemsInputError(req.body, true, "received_quantity");
   if (inputError) {
     return res.status(400).json({ error: "INVALID_INPUT", message: inputError });
   }
