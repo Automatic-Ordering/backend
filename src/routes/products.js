@@ -1,5 +1,5 @@
 const express = require("express");
-const { Product } = require("../../models");
+const { Product, Store, StoreInventory } = require("../../models");
 const { ForeignKeyConstraintError, ValidationError } = require("sequelize");
 const { authenticate, requireRole } = require("../middleware/auth");
 
@@ -42,41 +42,7 @@ const validateProductInput = ({
  *     tags:
  *       - Products
  *     summary: 상품 등록
- *     description: 본사 공용 상품 카탈로그에 신규 상품을 등록합니다.
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - product_name
- *               - category
- *               - price
- *             properties:
- *               product_name:
- *                 type: string
- *                 example: 삼각김밥
- *               category:
- *                 type: string
- *                 example: 식품
- *               price:
- *                 type: number
- *                 minimum: 0
- *                 example: 1500
- *     responses:
- *       '201':
- *         description: 상품이 성공적으로 등록되었습니다.
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Product'
- *       '400':
- *         description: 입력값이 올바르지 않습니다.
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
+ *     description: 본사 공용 상품 카탈로그에 신규 상품을 등록하고 모든 점포의 초기 재고(0개)에 자동 연동합니다.
  */
 router.post("/", authenticate, requireRole("ADMIN"), async (req, res, next) => {
   const validationMessage = validateProductInput(req.body || {});
@@ -87,15 +53,43 @@ router.post("/", authenticate, requireRole("ADMIN"), async (req, res, next) => {
     });
   }
 
+  const t = await Product.sequelize.transaction();
   try {
-    const product = await Product.create({
-      productName: req.body.product_name.trim(),
-      category: req.body.category.trim(),
-      price: req.body.price,
+    // 1. 본사 공용 상품 등록
+    const product = await Product.create(
+      {
+        productName: req.body.product_name.trim(),
+        category: req.body.category.trim(),
+        price: req.body.price,
+      },
+      { transaction: t },
+    );
+
+    // 2. 등록된 모든 점포에 초기 재고(0개) 자동 생성하여 점포 화면에 즉시 노출
+    const stores = await Store.findAll({
+      attributes: ["storeId"],
+      transaction: t,
     });
 
+    if (stores.length > 0) {
+      await StoreInventory.bulkCreate(
+        stores.map((store) => ({
+          storeId: store.storeId,
+          productId: product.productId,
+          currentStock: 0,
+          safetyStock: 0,
+        })),
+        {
+          transaction: t,
+          ignoreDuplicates: true,
+        },
+      );
+    }
+
+    await t.commit();
     return res.status(201).json(serializeProduct(product));
   } catch (error) {
+    await t.rollback();
     if (error instanceof ValidationError) {
       return res.status(400).json({
         error: "INVALID_INPUT",
@@ -115,52 +109,87 @@ router.post("/", authenticate, requireRole("ADMIN"), async (req, res, next) => {
  *       - Products
  *     summary: 상품 전체 조회
  *     description: 전체 상품 카탈로그 목록을 최신 등록순으로 조회합니다.
- *     responses:
- *       '200':
- *         description: 상품 목록
- *         content:
- *           application/json:
- *             schema:
- *               type: array
- *               items:
- *                 $ref: '#/components/schemas/Product'
  */
+router.get("/", async (req, res, next) => {
+  try {
+    const products = await Product.findAll({
+      order: [["productId", "DESC"]],
+    });
+    return res.json(products.map(serializeProduct));
+  } catch (error) {
+    return next(error);
+  }
+});
 
-// PATCH: 상품 정보 수정 (ADMIN 전용)
+/**
+ * @openapi
+ * /api/products/{productId}:
+ *   get:
+ *     tags:
+ *       - Products
+ *     summary: 상품 단일 조회
+ */
+router.get("/:productId", async (req, res, next) => {
+  try {
+    const product = await Product.findByPk(req.params.productId);
+    if (!product) {
+      return res.status(404).json({
+        error: "NOT_FOUND",
+        message: "상품을 찾을 수 없습니다.",
+      });
+    }
+
+    return res.json(serializeProduct(product));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+/**
+ * @openapi
+ * /api/products/{productId}:
+ *   patch:
+ *     tags:
+ *       - Products
+ *     summary: 상품 정보 수정 (ADMIN 전용)
+ */
 router.patch(
   "/:productId",
   authenticate,
   requireRole("ADMIN"),
   async (req, res, next) => {
-    const { productId } = req.params;
     const validationMessage = validateProductInput(req.body || {});
     if (validationMessage) {
-      return res
-        .status(400)
-        .json({ error: "INVALID_INPUT", message: validationMessage });
+      return res.status(400).json({
+        error: "INVALID_INPUT",
+        message: validationMessage,
+      });
     }
+
     try {
-      const product = await Product.findByPk(productId);
+      const product = await Product.findByPk(req.params.productId);
       if (!product) {
-        return res
-          .status(404)
-          .json({ error: "NOT_FOUND", message: "상품을 찾을 수 없습니다." });
+        return res.status(404).json({
+          error: "NOT_FOUND",
+          message: "상품을 찾을 수 없습니다.",
+        });
       }
+
       await product.update({
-        productName: req.body.product_name?.trim(),
-        category: req.body.category?.trim(),
+        productName: req.body.product_name.trim(),
+        category: req.body.category.trim(),
         price: req.body.price,
       });
+
       return res.json(serializeProduct(product));
     } catch (error) {
       if (error instanceof ValidationError) {
-        return res
-          .status(400)
-          .json({
-            error: "INVALID_INPUT",
-            message: error.errors.map(({ message }) => message).join(", "),
-          });
+        return res.status(400).json({
+          error: "INVALID_INPUT",
+          message: error.errors.map(({ message }) => message).join(", "),
+        });
       }
+
       return next(error);
     }
   },
@@ -168,45 +197,59 @@ router.patch(
 
 /**
  * @openapi
- * /api/store/products/:productId/safety_stock:
+ * /api/products/{productId}:
+ *   delete:
+ *     tags:
+ *       - Products
+ *     summary: 상품 삭제 (ADMIN 전용)
+ */
+router.delete(
+  "/:productId",
+  authenticate,
+  requireRole("ADMIN"),
+  async (req, res, next) => {
+    const { productId } = req.params;
+    const t = await Product.sequelize.transaction();
+    try {
+      const product = await Product.findByPk(productId, { transaction: t });
+      if (!product) {
+        await t.rollback();
+        return res.status(404).json({
+          error: "NOT_FOUND",
+          message: "상품을 찾을 수 없습니다.",
+        });
+      }
+
+      // 재고가 0개인 미사용 초기 재고 레코드는 함께 정리 후 상품 삭제
+      await StoreInventory.destroy({
+        where: { productId, currentStock: 0 },
+        transaction: t,
+      });
+
+      await product.destroy({ transaction: t });
+      await t.commit();
+      return res.status(204).send();
+    } catch (error) {
+      await t.rollback();
+      if (error instanceof ForeignKeyConstraintError) {
+        return res.status(409).json({
+          error: "CONFLICT",
+          message: "재고 또는 발주/판매 이력이 있는 상품은 삭제할 수 없습니다.",
+        });
+      }
+
+      return next(error);
+    }
+  },
+);
+
+/**
+ * @openapi
+ * /api/store/products/{productId}/safety_stock:
  *   patch:
  *     tags:
  *       - Store Products
- *     summary: 상품 안전 재고 수량 수정
- *     description: 점포 전용 - 상품의 안전 재고 수량을 개수 단위로 수정합니다. StoreInventory 테이블의 safety_stock 필드를 업데이트합니다.
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: productId
- *         required: true
- *         schema: { type: integer, minimum: 1, example: 1 }
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required: [safety_stock]
- *             properties:
- *               safety_stock: { type: integer, minimum: 0, example: 50 }
- *     responses:
- *       '200':
- *         description: 안전 재고가 성공적으로 수정되었습니다.
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 safety_stock: { type: integer, example: 50 }
- *       '400':
- *         description: 입력값이 올바르지 않습니다.
- *       '404':
- *         description: 상품을 찾을 수 없습니다.
- *       '401':
- *         description: 점포 인증이 필요합니다.
- *       '403':
- *         description: 점포 권한이 필요합니다.
+ *     summary: 상품 안전 재고 수량 수정 (STORE 전용)
  */
 router.patch(
   "/:productId/safety_stock",
@@ -217,9 +260,10 @@ router.patch(
     const { safety_stock } = req.body;
 
     if (safety_stock === undefined || safety_stock === null) {
-      return res
-        .status(400)
-        .json({ error: "INVALID_INPUT", message: "safety_stock는 필수 입력값입니다." });
+      return res.status(400).json({
+        error: "INVALID_INPUT",
+        message: "safety_stock는 필수 입력값입니다.",
+      });
     }
 
     if (!Number.isInteger(safety_stock) || safety_stock < 0) {
@@ -249,232 +293,5 @@ router.patch(
     }
   },
 );
-
-module.exports = router;
-
-// DELETE: 상품 삭제 (ADMIN 전용)
-router.delete(
-  "/:productId",
-  authenticate,
-  requireRole("ADMIN"),
-  async (req, res, next) => {
-    const { productId } = req.params;
-    try {
-      const rows = await Product.destroy({ where: { productId } });
-      if (!rows) {
-        return res
-          .status(404)
-          .json({ error: "NOT_FOUND", message: "상품을 찾을 수 없습니다." });
-      }
-      return res.status(204).send();
-    } catch (error) {
-      return next(error);
-    }
-  },
-);
-
-router.get("/", async (req, res, next) => {
-  try {
-    const products = await Product.findAll({
-      order: [["productId", "DESC"]],
-    });
-    return res.json(products.map(serializeProduct));
-  } catch (error) {
-    return next(error);
-  }
-});
-
-/**
- * @openapi
- * /api/products/{productId}:
- *   get:
- *     tags:
- *       - Products
- *     summary: 상품 단일 조회
- *     description: 상품 ID로 상품 정보를 조회합니다.
- *     parameters:
- *       - in: path
- *         name: productId
- *         required: true
- *         description: 상품 ID
- *         schema:
- *           type: integer
- *     responses:
- *       '200':
- *         description: 상품 상세 정보
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Product'
- *       '404':
- *         description: 상품을 찾을 수 없습니다.
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
- */
-router.get("/:productId", async (req, res, next) => {
-  try {
-    const product = await Product.findByPk(req.params.productId);
-    if (!product) {
-      return res.status(404).json({
-        error: "NOT_FOUND",
-        message: "상품을 찾을 수 없습니다.",
-      });
-    }
-
-    return res.json(serializeProduct(product));
-  } catch (error) {
-    return next(error);
-  }
-});
-
-/**
- * @openapi
- * /api/products/{productId}:
- *   patch:
- *     tags:
- *       - Products
- *     summary: 상품 정보 수정
- *     description: 상품의 이름, 카테고리, 가격을 수정합니다.
- *     parameters:
- *       - in: path
- *         name: productId
- *         required: true
- *         description: 상품 ID
- *         schema:
- *           type: integer
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - product_name
- *               - category
- *               - price
- *             properties:
- *               product_name:
- *                 type: string
- *                 example: 삼각김밥(참치마요)
- *               category:
- *                 type: string
- *                 example: 식품
- *               price:
- *                 type: number
- *                 minimum: 0
- *                 example: 1600
- *     responses:
- *       '200':
- *         description: 상품 정보가 수정되었습니다.
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Product'
- *       '400':
- *         description: 입력값이 올바르지 않습니다.
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
- *       '404':
- *         description: 상품을 찾을 수 없습니다.
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
- */
-router.patch("/:productId", async (req, res, next) => {
-  const validationMessage = validateProductInput(req.body || {});
-  if (validationMessage) {
-    return res.status(400).json({
-      error: "INVALID_INPUT",
-      message: validationMessage,
-    });
-  }
-
-  try {
-    const product = await Product.findByPk(req.params.productId);
-    if (!product) {
-      return res.status(404).json({
-        error: "NOT_FOUND",
-        message: "상품을 찾을 수 없습니다.",
-      });
-    }
-
-    await product.update({
-      productName: req.body.product_name.trim(),
-      category: req.body.category.trim(),
-      price: req.body.price,
-    });
-
-    return res.json(serializeProduct(product));
-  } catch (error) {
-    if (error instanceof ValidationError) {
-      return res.status(400).json({
-        error: "INVALID_INPUT",
-        message: error.errors.map(({ message }) => message).join(", "),
-      });
-    }
-
-    return next(error);
-  }
-});
-
-/**
- * @openapi
- * /api/products/{productId}:
- *   delete:
- *     tags:
- *       - Products
- *     summary: 상품 삭제
- *     description: 상품 카탈로그에서 상품을 삭제합니다. 점포 재고 등 관련 데이터가 참조하고 있는 경우 삭제할 수 없습니다.
- *     parameters:
- *       - in: path
- *         name: productId
- *         required: true
- *         description: 상품 ID
- *         schema:
- *           type: integer
- *     responses:
- *       '204':
- *         description: 상품이 성공적으로 삭제되었습니다.
- *       '404':
- *         description: 상품을 찾을 수 없습니다.
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
- *       '409':
- *         description: 관련 데이터(재고 등)가 있는 상품은 삭제할 수 없습니다.
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
- */
-router.delete("/:productId", async (req, res, next) => {
-  try {
-    const product = await Product.findByPk(req.params.productId);
-    if (!product) {
-      return res.status(404).json({
-        error: "NOT_FOUND",
-        message: "상품을 찾을 수 없습니다.",
-      });
-    }
-
-    await product.destroy();
-    return res.status(204).send();
-  } catch (error) {
-    if (error instanceof ForeignKeyConstraintError) {
-      return res.status(409).json({
-        error: "CONFLICT",
-        message: "관련 데이터가 있는 상품은 삭제할 수 없습니다.",
-      });
-    }
-
-    return next(error);
-  }
-});
 
 module.exports = router;
