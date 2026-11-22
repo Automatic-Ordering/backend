@@ -333,6 +333,13 @@ const getRecommendationDetail = async (storeId, productId) => {
 };
 
 const confirmOrders = async (storeId, items) => {
+  const multiplierMap = new Map();
+  for (const item of items) {
+    if (item.multiplier !== undefined) {
+      multiplierMap.set(item.productId, item.multiplier);
+    }
+  }
+
   const normalized = validateConfirmItems(items);
   const productIds = normalized.map((item) => item.productId);
 
@@ -354,11 +361,17 @@ const confirmOrders = async (storeId, items) => {
   const createdOrders = [];
   await sequelize.transaction(async (transaction) => {
     for (const { productId, quantity } of normalized) {
+      const product = inventories.find((inv) => inv.productId === productId)?.product;
+      const packSize = product ? product.orderUnit : 1;
+      const orderQuantity = multiplierMap.has(productId)
+        ? multiplierMap.get(productId) * packSize
+        : quantity;
+
       const order = await Order.create(
         {
           storeId,
           productId,
-          orderQuantity: quantity,
+          orderQuantity,
           orderStatus: "PENDING",
         },
         { transaction },
@@ -370,17 +383,23 @@ const confirmOrders = async (storeId, items) => {
   return createdOrders;
 };
 
-const serializeOrderRow = (order) => ({
-  order_id: order.orderId,
-  store_id: order.storeId,
-  product_id: order.productId,
-  product_name: order.product?.productName ?? null,
-  category: order.product?.category ?? null,
-  order_quantity: order.orderQuantity,
-  order_status: order.orderStatus,
-  created_at: order.createdAt,
-  updated_at: order.updatedAt,
-});
+const serializeOrderRow = (order) => {
+  const packSize = order.product?.orderUnit ?? 1;
+  const multiplier = packSize > 0 ? Math.round(order.orderQuantity / packSize) : order.orderQuantity;
+  return {
+    order_id: order.orderId,
+    store_id: order.storeId,
+    product_id: order.productId,
+    product_name: order.product?.productName ?? null,
+    category: order.product?.category ?? null,
+    quantity: order.orderQuantity,
+    pack_size: packSize,
+    multiplier: multiplier,
+    order_status: order.orderStatus,
+    created_at: order.createdAt,
+    updated_at: order.updatedAt,
+  };
+};
 
 const getStoreOrders = async (
   storeId,

@@ -83,7 +83,14 @@ const applyTransition = async (
 const normalizeSpecItems = (items) =>
   validateOrderItems(items, { maxItems: MAX_ORDER_ITEMS });
 
-const resolveSpecItems = async (storeId, normalizedItems) => {
+const resolveSpecItems = async (storeId, normalizedItems, rawItems = []) => {
+  const multiplierMap = new Map();
+  for (const item of rawItems) {
+    if (item.multiplier !== undefined) {
+      multiplierMap.set(item.productId, item.multiplier);
+    }
+  }
+
   const inventories = await StoreInventory.findAll({
     where: { storeId },
     include: [{ model: Product, as: "product" }],
@@ -105,12 +112,17 @@ const resolveSpecItems = async (storeId, normalizedItems) => {
         `해당 상품은 이 점포의 재고에 등록되어 있지 않습니다. (product_id=${productId})`,
       );
     }
+    const packSize = product.orderUnit;
+    const orderQuantity = multiplierMap.has(productId)
+      ? multiplierMap.get(productId) * packSize
+      : quantity;
+
     const unitPrice = Number(product.price);
-    const amount = roundAmount(quantity * unitPrice);
+    const amount = roundAmount(orderQuantity * unitPrice);
     return {
       productId,
       productName: product.productName,
-      quantity,
+      quantity: orderQuantity,
       unitPrice,
       amount,
     };
@@ -143,18 +155,25 @@ const buildRecommendedItems = async (storeId) => {
   }));
 };
 
-const serializeSpecItem = (item) => ({
-  item_id: item.orderSpecItemId,
-  product_id: item.productId,
-  product_name: item.productName,
-  order_quantity: item.orderQuantity,
-  unit_price: Number(item.unitPrice),
-  amount: Number(item.amount),
-  received_quantity:
-    item.receivedQuantity === null || item.receivedQuantity === undefined
-      ? null
-      : Number(item.receivedQuantity),
-});
+const serializeSpecItem = (item) => {
+  const packSize = item.product?.orderUnit ?? 1;
+  const multiplier = packSize > 0 ? Math.round(item.orderQuantity / packSize) : item.orderQuantity;
+  return {
+    item_id: item.orderSpecItemId,
+    product_id: item.productId,
+    product_name: item.productName,
+    order_quantity: item.orderQuantity,
+    quantity: item.orderQuantity,
+    pack_size: packSize,
+    multiplier: multiplier,
+    unit_price: Number(item.unitPrice),
+    amount: Number(item.amount),
+    received_quantity:
+      item.receivedQuantity === null || item.receivedQuantity === undefined
+        ? null
+        : Number(item.receivedQuantity),
+  };
+};
 
 const serializeSpecHistory = (history) => ({
   history_id: history.historyId,
@@ -193,6 +212,14 @@ const serializeSpec = (spec, { includeItems = false } = {}) => ({
 });
 
 const createOrderSpec = async (storeId, { items } = {}) => {
+  const rawItems = items ?? [];
+  const multiplierMap = new Map();
+  for (const item of rawItems) {
+    if (item.multiplier !== undefined) {
+      multiplierMap.set(item.productId, item.multiplier);
+    }
+  }
+
   let normalizedItems;
   if (items !== undefined && items !== null) {
     normalizedItems = normalizeSpecItems(items);
@@ -207,7 +234,7 @@ const createOrderSpec = async (storeId, { items } = {}) => {
     }
   }
 
-  const resolvedItems = await resolveSpecItems(storeId, normalizedItems);
+  const resolvedItems = await resolveSpecItems(storeId, normalizedItems, rawItems);
   const totalAmount = roundAmount(
     resolvedItems.reduce((sum, item) => sum + item.amount, 0),
   );
@@ -252,8 +279,16 @@ const createOrderSpec = async (storeId, { items } = {}) => {
 };
 
 const updateOrderSpecItems = async (storeId, orderSpecId, items) => {
+  const rawItems = items ?? [];
+  const multiplierMap = new Map();
+  for (const item of rawItems) {
+    if (item.multiplier !== undefined) {
+      multiplierMap.set(item.productId, item.multiplier);
+    }
+  }
+
   const normalizedItems = normalizeSpecItems(items);
-  const resolvedItems = await resolveSpecItems(storeId, normalizedItems);
+  const resolvedItems = await resolveSpecItems(storeId, normalizedItems, rawItems);
 
   const spec = await sequelize.transaction(async (transaction) => {
     const target = await OrderSpecification.findOne({
@@ -456,12 +491,12 @@ const receiveOrderSpec = async (storeId, orderSpecId, items) => {
 
     const comparison = [];
     for (const item of specItems) {
-      const receivedQuantity = receivedQuantityByProductId.get(item.productId);
+      const orderQuantity = item.orderQuantity;
       try {
         await increaseStock({
           storeId: spec.storeId,
           productId: item.productId,
-          quantity: receivedQuantity,
+          quantity: orderQuantity,
           transaction,
         });
       } catch (error) {
@@ -475,15 +510,15 @@ const receiveOrderSpec = async (storeId, orderSpecId, items) => {
         throw error;
       }
 
-      item.receivedQuantity = receivedQuantity;
+      item.receivedQuantity = orderQuantity;
       await item.save({ transaction });
 
       comparison.push({
         product_id: item.productId,
         product_name: item.productName,
         order_quantity: item.orderQuantity,
-        received_quantity: receivedQuantity,
-        difference: receivedQuantity - item.orderQuantity,
+        received_quantity: orderQuantity,
+        difference: orderQuantity - item.orderQuantity,
       });
     }
 

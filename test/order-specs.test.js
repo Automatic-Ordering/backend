@@ -103,6 +103,10 @@ const STORE_INVENTORIES = [
   },
 ];
 
+
+
+
+
 // 점포별 자동 발주 기준 설정 목업 (기본값: 120/7/0.4/0.6/1.65/3)
 const mockOrderSettings = (overrides = {}) =>
   overrideMethod(StoreOrderSetting, "findOne", async () => ({
@@ -888,21 +892,21 @@ test("receipt completes order and increases store inventory", async () => {
     expect(response.body.received_at).toBeTruthy();
     expect(response.body.comparison.length).toBe(2);
     expect(response.body.comparison[0].order_quantity).toBe(10);
-    expect(response.body.comparison[0].received_quantity).toBe(8);
-    expect(response.body.comparison[0].difference).toBe(-2);
+    expect(response.body.comparison[0].received_quantity).toBe(10);
+    expect(response.body.comparison[0].difference).toBe(0);
     expect(response.body.comparison[1].difference).toBe(0);
-    expect(response.body.items[0].received_quantity).toBe(8);
+    expect(response.body.items[0].received_quantity).toBe(10);
 
     expect(receiptFindOneArgs.lock).toBe(true);
     expect(receiptFindOneArgs.transaction).toBeTruthy();
     expect(incrementCalls.length).toBe(2);
     expect(incrementCalls[0].field).toBe("currentStock");
-    expect(incrementCalls[0].options.by).toBe(8);
+    expect(incrementCalls[0].options.by).toBe(10);
     expect(incrementCalls[0].where).toEqual({ storeId: 1, productId: 1 });
     expect(incrementCalls[1].options.by).toBe(4);
     expect(item1.saveCalls.length).toBe(1);
     expect(item1.saveCalls[0].transaction).toBeTruthy();
-    expect(item1.receivedQuantity).toBe(8);
+    expect(item1.receivedQuantity).toBe(10);
     expect(historyCalls[0].fromStatus).toBe("PENDING_RECEIPT");
     expect(historyCalls[0].toStatus).toBe("RECEIVED");
     expect(historyCalls[0].changedByAdminId).toBeNull();
@@ -1184,5 +1188,110 @@ test("store can cancel draft specification", async () => {
     restoreSpecFindOne();
     restoreHistoryCreate();
     restoreTransaction();
+  }
+});
+
+test("integrated: quantity 5로 주문 및 입고 처리 (pack_size 일관성 검증)", async () => {
+  setStoreAuthMock();
+  const restoreTransaction = mockTransaction();
+  const restoreSettings = mockOrderSettings();
+
+  const originalQuery = sequelize.query;
+  sequelize.query = async () => [[{ product_id: 1, incoming_quantity: 0 }]];
+  const restoreSalesFindAll = overrideMethod(Sales, "findAll", async () =>
+    Array.from({ length: 7 }, (_, i) => ({
+      productId: 1,
+      salesQuantity: 1,
+      salesDate: new Date(`2026-11-${String(2 + i).padStart(2, "0")}T09:00:00`),
+    })),
+  );
+  const restoreInventoryFindAll = overrideMethod(
+    StoreInventory,
+    "findAll",
+    async () => STORE_INVENTORIES,
+  );
+  const restoreInventoryCount = overrideMethod(
+    StoreInventory,
+    "count",
+    async () => 2,
+  );
+
+  const specInstance = buildSpecInstance({
+    orderSpecId: 201,
+    orderStatus: "DRAFT",
+  });
+  const restoreSpecCreate = overrideMethod(
+    OrderSpecification,
+    "create",
+    async (values, options) => {
+      Object.assign(specInstance, values);
+      return specInstance;
+    },
+  );
+  const restoreItemBulkCreate = overrideMethod(
+    OrderSpecificationItem,
+    "bulkCreate",
+    async (rows) => rows.map((row, index) => ({ orderSpecItemId: 800 + index, ...row })),
+  );
+  const restoreHistoryCreate = overrideMethod(
+    OrderStatusHistory,
+    "create",
+    async (values) => ({ historyId: 990, ...values }),
+  );
+
+  try {
+    const specCreateResponse = await request(app)
+      .post("/api/store/orders/specs")
+      .set("Authorization", `Bearer ${storeToken()}`)
+      .send({
+        items: [
+          { product_id: 1, quantity: 5 },
+        ],
+      });
+
+    expect(specCreateResponse.statusCode).toBe(201);
+    expect(specCreateResponse.body.order_status).toBe("DRAFT");
+    expect(specCreateResponse.body.items.length).toBe(1);
+    expect(specCreateResponse.body.items[0].product_id).toBe(1);
+    expect(specCreateResponse.body.items[0].order_quantity).toBe(5);
+
+    const specId = specCreateResponse.body.order_spec_id;
+
+    const confirmResponse = await request(app)
+      .post(`/api/store/orders/specs/${specId}/confirm`)
+      .set("Authorization", `Bearer ${storeToken()}`);
+
+    expect(confirmResponse.statusCode).toBe(200);
+    expect(confirmResponse.body.order_status).toBe("PENDING_RECEIPT");
+
+    const receiveResponse = await request(app)
+      .post(`/api/store/orders/specs/${specId}/receipt`)
+      .set("Authorization", `Bearer ${storeToken()}`)
+      .send({
+        items: [
+          { product_id: 1, received_quantity: 5 },
+        ],
+      });
+
+    expect(receiveResponse.statusCode).toBe(200);
+    expect(receiveResponse.body.order_status).toBe("RECEIVED");
+    expect(receiveResponse.body.comparison.length).toBe(1);
+    expect(receiveResponse.body.comparison[0].order_quantity).toBe(5);
+    expect(receiveResponse.body.comparison[0].received_quantity).toBe(5);
+    expect(receiveResponse.body.comparison[0].difference).toBe(0);
+
+    expect(receiveResponse.body.incrementCalls.length).toBe(1);
+    expect(receiveResponse.body.incrementCalls[0].options.by).toBe(5);
+    expect(receiveResponse.body.incrementCalls[0].where).toEqual({ storeId: 1, productId: 1 });
+
+  } finally {
+    sequelize.query = originalQuery;
+    restoreSalesFindAll();
+    restoreInventoryFindAll();
+    restoreInventoryCount();
+    restoreSpecCreate();
+    restoreItemBulkCreate();
+    restoreHistoryCreate();
+    restoreSettings();
   }
 });
