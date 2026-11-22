@@ -58,6 +58,7 @@ const seedSalesHistory = async () => {
     );
   }
 
+  const shouldReset = process.env.RESET === "true";
   const seed = Number(process.env.SEED) || DEFAULT_SEED;
   const random = createRandom(seed);
 
@@ -66,13 +67,19 @@ const seedSalesHistory = async () => {
     throw new Error(`점포를 찾을 수 없습니다. (store_id=${storeId})`);
   }
 
+  // RESET=true 일 경우 해당 점포의 기존 판매 이력 삭제
+  let deletedCount = 0;
+  if (shouldReset) {
+    deletedCount = await Sales.destroy({ where: { storeId } });
+  }
+
   const inventories = await StoreInventory.findAll({
     where: { storeId },
     include: [
       {
         model: Product,
         as: "product",
-        attributes: ["productId", "productName"],
+        attributes: ["productId", "productName", "orderUnit"],
       },
     ],
   });
@@ -82,7 +89,7 @@ const seedSalesHistory = async () => {
   );
   if (!registeredProducts.length) {
     throw new Error(
-      `해당 점포에 재고가 등록된 상품이 없습니다. (store_id=${storeId})`,
+      `해당 점포에 재고가 등록된 상품이 없습니다. (store_id=${storeId}) - 점포 재고 시드를 먼저 실행하세요.`,
     );
   }
 
@@ -98,13 +105,15 @@ const seedSalesHistory = async () => {
     dayList.push(day);
   }
 
-  const existingSales = await Sales.findAll({
-    where: {
-      storeId,
-      salesDate: { [Op.gte]: rangeStart, [Op.lt]: rangeEnd },
-    },
-    attributes: ["productId", "salesDate"],
-  });
+  const existingSales = shouldReset
+    ? []
+    : await Sales.findAll({
+        where: {
+          storeId,
+          salesDate: { [Op.gte]: rangeStart, [Op.lt]: rangeEnd },
+        },
+        attributes: ["productId", "salesDate"],
+      });
 
   const existingKeys = new Set(
     existingSales.map(
@@ -146,6 +155,9 @@ const seedSalesHistory = async () => {
     "[Seed Sales History] 점포:",
     `${store.storeName} (store_id=${storeId})`,
   );
+  if (shouldReset) {
+    console.log(`[Seed Sales History] 기존 판매 이력 초기화: ${deletedCount}건 삭제`);
+  }
   console.log(
     "[Seed Sales History] 대상 상품:",
     `${registeredProducts.length}개`,
@@ -163,7 +175,7 @@ const seedSalesHistory = async () => {
   );
   console.log("========================================");
 
-  return { createdCount, skippedCount };
+  return { deletedCount, createdCount, skippedCount };
 };
 
 if (require.main === module) {

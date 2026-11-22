@@ -77,6 +77,19 @@ const calculateRecommendation = (input = {}) => {
     "리드타임",
     1,
   );
+  const analysisDays = assertNonNegativeSetting(
+    input.analysisDays,
+    "분석일수",
+    SALES_WINDOW_DAYS,
+  );
+  const safetyStockDays = assertNonNegativeSetting(
+    input.safetyStockDays,
+    "안전재고일수",
+    2,
+  );
+  const orderUnit = input.orderUnit
+      ? assertPositiveInteger(input.orderUnit, "발주 배수", 1)
+      : 1;
 
   const series = buildDailySeries(input.dailySales);
   const recentSales = series.reduce((sum, entry) => sum + Number(entry.quantity || 0), 0);
@@ -84,21 +97,32 @@ const calculateRecommendation = (input = {}) => {
   if (!series.length) dataWarning.push(WARNING_CODES.NO_SALES_DATA);
   else if (series.length < 2) dataWarning.push(WARNING_CODES.INSUFFICIENT_SALES_DATA);
 
-  const targetStock = recentSales + safetyStock;
-  const rawOrderQuantity = Math.max(0, targetStock - currentStock);
+  const avgDailySales = recentSales / analysisDays;
+  const requiredEa = Math.max(
+    0,
+    Math.ceil(avgDailySales * (leadTimeDays + safetyStockDays)) - currentStock,
+  );
+
+const recommendedQty = requiredEa > 0
+    ? Math.ceil(requiredEa / orderUnit)
+    : 0;
+
+  const totalExpectedEa = recommendedQty * orderUnit;
+  const targetStock = Math.ceil(avgDailySales * (leadTimeDays + safetyStockDays));
 
   return {
     predictedDemand: recentSales,
-    movingAverage: recentSales / SALES_WINDOW_DAYS,
+    movingAverage: avgDailySales,
     sameWeekdayAverage: null,
-    dailyMean: recentSales / SALES_WINDOW_DAYS,
+    avgDailySales,
+    dailyMean: avgDailySales,
     dailyStdDev: calculateDailyStats(series).stdDev,
     salesSeriesDays: series.length,
     serviceLevelZ: SERVICE_LEVEL_Z,
     leadTimeDays,
     forecastPeriodDays: FORECAST_PERIOD_DAYS,
     coverageDays: 1,
-    orderUnit: 1,
+    orderUnit,
     computedSafetyStock: 0,
     configuredSafetyStock: safetyStock,
     appliedSafetyStock: safetyStock,
@@ -106,9 +130,11 @@ const calculateRecommendation = (input = {}) => {
     targetStock,
     currentStock,
     incomingQuantity: 0,
-    rawOrderQuantity,
-    orderQuantity: rawOrderQuantity,
-    needsOrder: rawOrderQuantity > 0,
+    rawOrderQuantity: requiredEa,
+    orderQuantity: recommendedQty,
+    needsOrder: recommendedQty > 0,
+    recommendedMultiplier: recommendedQty,
+    totalExpectedEa,
     dataWarning,
   };
 };

@@ -140,6 +140,10 @@ const serializeRecommendation = (
   recommended_quantity: recommendation.orderQuantity,
   needs_order: recommendation.needsOrder,
   data_warning: recommendation.dataWarning,
+avg_daily_sales: recommendation.avgDailySales,
+  order_unit: recommendation.orderUnit,
+  order_multiplier: recommendation.recommendedMultiplier,
+  total_expected_ea: recommendation.totalExpectedEa,
 });
 
 const getRegisteredInventories = async (storeId, { productId } = {}) => {
@@ -159,8 +163,11 @@ const getOrderRecommendations = async (
   storeId,
   { page = 1, limit = 20, search } = {},
 ) => {
-  const { windowStart, windowEnd } = getSalesWindow(SALES_WINDOW_DAYS);
-  const { windowStart: recentWindowStart } = getSalesWindow(SALES_WINDOW_DAYS);
+  const settings = await getStoreOrderSettings(storeId);
+  const analysisDays = settings.analysisDays;
+  const safetyStockDays = settings.safetyStockDays;
+  const { windowStart, windowEnd } = getSalesWindow(analysisDays);
+  const { windowStart: recentWindowStart } = getSalesWindow(analysisDays);
   const productWhere = search
     ? {
         [Op.or]: [
@@ -195,9 +202,9 @@ const getOrderRecommendations = async (
     })
   ).filter((inventory) => inventory.product);
 
-  if (!inventories.length) {
+if (!inventories.length) {
     return { recommendations: [], total };
-  }
+}
 
   const productIds = inventories.map((inventory) => inventory.productId);
 
@@ -236,6 +243,8 @@ const getOrderRecommendations = async (
       leadTimeDays: product.leadTimeDays,
       orderUnit: product.orderUnit,
       configuredSafetyStock: inventory.safetyStock,
+      analysisDays,
+      safetyStockDays,
     });
     return serializeRecommendation(
       product,
@@ -261,8 +270,10 @@ const getRecommendationDetail = async (storeId, productId) => {
 
   const product = inventory.product;
   const settings = await getStoreOrderSettings(storeId);
-  const { windowStart, windowEnd } = getSalesWindow(SALES_WINDOW_DAYS);
-  const { windowStart: recentWindowStart } = getSalesWindow(SALES_WINDOW_DAYS);
+  const analysisDays = settings.analysisDays;
+  const safetyStockDays = settings.safetyStockDays;
+  const { windowStart, windowEnd } = getSalesWindow(analysisDays);
+  const { windowStart: recentWindowStart } = getSalesWindow(analysisDays);
 
   const salesRows = await Sales.findAll({
     where: {
@@ -292,6 +303,8 @@ const getRecommendationDetail = async (storeId, productId) => {
     leadTimeDays: product.leadTimeDays,
     orderUnit: product.orderUnit,
     configuredSafetyStock: inventory.safetyStock,
+    analysisDays,
+    safetyStockDays,
   });
   return {
     ...serializeRecommendation(
@@ -302,11 +315,11 @@ const getRecommendationDetail = async (storeId, productId) => {
       recentSalesQuantity,
     ),
     calculation_basis: {
-      sales_window_days: SALES_WINDOW_DAYS,
+      sales_window_days: analysisDays,
       sales_series_days: series.length,
-      analysis_days: SALES_WINDOW_DAYS,
-      safety_stock_days: null,
-      lead_time_days: null,
+      analysis_days: analysisDays,
+      safety_stock_days: safetyStockDays,
+      lead_time_days: product.leadTimeDays,
       forecast_period_days: FORECAST_PERIOD_DAYS,
       forecast_coverage_days: recommendation.coverageDays,
       same_weekday_sample_count: 0,
