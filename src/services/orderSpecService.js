@@ -176,13 +176,26 @@ const serializeSpecItem = (item) => {
 };
 
 const serializeSpecHistory = (history) => ({
-  history_id: history.historyId,
-  from_status: history.fromStatus ?? null,
-  to_status: history.toStatus,
-  changed_by_admin_id: history.changedByAdminId ?? null,
+  history_id: history.history_id ?? history.id ?? null,
+  from_status: history.from_status ?? history.fromStatus ?? null,
+  to_status: history.to_status ?? history.toStatus ?? null,
+  changed_by_admin_id: history.changed_by_admin_id ?? history.changedByAdminId ?? null,
   note: history.note ?? null,
-  created_at: history.createdAt,
+  created_at: history.created_at ?? history.createdAt ?? null,
 });
+
+const getRequestDate = (spec) => {
+  if (spec.requestDate) {
+    return spec.requestDate.toISOString();
+  }
+  const requestedHistory = (spec.statusHistories ?? []).find(
+    (h) => h.to_status === "REQUESTED",
+  );
+  if (requestedHistory && requestedHistory.created_at) {
+    return requestedHistory.created_at.toISOString();
+  }
+  return null;
+};
 
 const serializeSpec = (spec, { includeItems = false } = {}) => ({
   order_spec_id: spec.orderSpecId,
@@ -190,7 +203,7 @@ const serializeSpec = (spec, { includeItems = false } = {}) => ({
   store_id: spec.storeId,
   store_name: spec.store?.storeName ?? null,
   order_status: spec.orderStatus,
-  request_date: spec.requestDate,
+  request_date: getRequestDate(spec),
   total_amount: Number(spec.totalAmount),
   admin_id: spec.adminId ?? null,
   approved_at: spec.approvedAt,
@@ -552,6 +565,7 @@ const buildSpecIncludes = ({ includeStore = true } = {}) => [
     as: "statusHistories",
     separate: true,
     order: [["historyId", "ASC"]],
+    attributes: ["history_id", "order_spec_id", "from_status", "to_status", "changed_by_admin_id", "note", "created_at", "updated_at"],
   },
 ];
 
