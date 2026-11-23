@@ -6,6 +6,7 @@ const {
 } = require("sequelize");
 const { sequelize } = require("../../config/database");
 const {
+  Admin,
   Store,
   StoreAccount,
   Inventory,
@@ -324,6 +325,44 @@ router.get("/", async (req, res, next) => {
     });
 
     return res.json(stores.map(serializeStore));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+/**
+ * @openapi
+ * /api/admin/stores/admins:
+ *   get:
+ *     tags:
+ *       - Admin Stores
+ *     summary: 전체 본사 관리자 계정 목록 조회
+ *     description: 등록된 본사 관리자 계정 목록을 조회합니다.
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       '200':
+ *         description: 본사 관리자 계정 목록
+ *       '401':
+ *         description: 인증 실패
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       '403':
+ *         description: 관리자 권한 필요
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
+router.get("/admins", async (req, res, next) => {
+  try {
+    const admins = await Admin.findAll({
+      attributes: { exclude: ["passwordHash"] },
+    });
+
+    return res.json(admins);
   } catch (error) {
     return next(error);
   }
